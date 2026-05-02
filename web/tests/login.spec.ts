@@ -33,5 +33,5 @@ test('clicking State Lead navigates to state lead home screen', async ({ page })
   await page.goto('/');
   await page.getByRole('button', { name: 'State Lead' }).click();
   await expect(page).toHaveURL('/state-lead');
-  await expect(page.getByRole('heading', { name: 'State Lead' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'State Overview' })).toBeVisible();
 });
