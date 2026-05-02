@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { SignOutButton } from '@/components/SignOutButton';
 
 type Stat = { name: string; count: number };
 type Period = 'this_month' | 'last_month' | 'last_3_months' | 'last_6_months';
@@ -57,6 +58,7 @@ export default function StateLeadDashboard() {
             ))}
           </select>
         </label>
+        <SignOutButton />
       </div>
 
       {!drillDistrict && (

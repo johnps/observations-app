@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { SignOutButton } from '@/components/SignOutButton';
 
 type Observation = {
   id: string;
@@ -52,7 +53,10 @@ export default function DistrictLeadObservations() {
 
   return (
     <main className="p-8 max-w-6xl">
-      <h1 className="text-2xl font-semibold text-gray-800 mb-6">Observations</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-semibold text-gray-800">Observations</h1>
+        <SignOutButton />
+      </div>
 
       <div className="mb-6 flex gap-4 items-center">
         <label className="text-sm font-medium text-gray-600">

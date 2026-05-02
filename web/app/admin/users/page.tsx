@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { SignOutButton } from '@/components/SignOutButton';
 
 type Role = 'admin' | 'district_lead' | 'block_lead' | 'state_lead';
 
@@ -88,12 +89,15 @@ export default function AdminUsersPage() {
     <main className="p-8 max-w-4xl">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold text-gray-800">User Management</h1>
-        <button
-          onClick={() => setShowForm(true)}
-          className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
-        >
-          Add User
-        </button>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setShowForm(true)}
+            className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
+          >
+            Add User
+          </button>
+          <SignOutButton />
+        </div>
       </div>
 
       {showForm && (
