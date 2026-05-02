@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { id, text, field_worker_name, village_name, block_lead_email, gps_lat, gps_lng, submitted_at } = body;
+  const { id, text, field_worker_name, village_name, block_lead_email, gps_lat, gps_lng, photo_urls, submitted_at } = body;
 
   if (!id || !text || !field_worker_name || !village_name || !block_lead_email || !submitted_at) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -22,6 +22,7 @@ export async function POST(req: NextRequest) {
       gps_lat: gps_lat ?? null,
       gps_lng: gps_lng ?? null,
       gps_captured,
+      photo_urls: photo_urls ?? [],
       submitted_at,
     }, { onConflict: 'id' })
     .select()

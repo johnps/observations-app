@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity,
+  View, Text, TextInput, TouchableOpacity, Image,
   StyleSheet, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { queueObservation } from '../lib/db';
 import { syncPending } from '../lib/sync';
 
 const FIELD_WORKERS_URL = `${process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000'}/api/hierarchy/field-workers`;
 const VILLAGES_URL = `${process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000'}/api/hierarchy/villages`;
+const MAX_PHOTOS = 5;
 
 type Props = { blockLeadEmail: string };
 
@@ -19,6 +22,7 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
   const [selectedWorker, setSelectedWorker] = useState('');
   const [selectedVillage, setSelectedVillage] = useState('');
   const [observationText, setObservationText] = useState('');
+  const [photoUris, setPhotoUris] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -34,6 +38,22 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
       .then(b => setVillages((b.villages ?? []).map((v: { village_name: string }) => v.village_name)));
   }, [selectedWorker, blockLeadEmail]);
 
+  async function handlePickPhoto() {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: false,
+      quality: 1,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    const resized = await ImageManipulator.manipulateAsync(
+      asset.uri,
+      [{ resize: { width: Math.min(asset.width, 1280) } }],
+      { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
+    );
+    setPhotoUris(prev => [...prev, resized.uri]);
+  }
+
   async function handleSubmit() {
     if (!observationText.trim()) return;
     setSubmitting(true);
@@ -44,6 +64,7 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
       field_worker_name: selectedWorker,
       village_name: selectedVillage,
       block_lead_email: blockLeadEmail,
+      photo_uris: photoUris,
       submitted_at: new Date().toISOString(),
     });
     await syncPending();
@@ -92,6 +113,26 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
       />
       <Text style={styles.hint}>Tap the mic on your keyboard to dictate in Hindi or English</Text>
 
+      <Text style={styles.label}>Photos ({photoUris.length}/{MAX_PHOTOS})</Text>
+      <View style={styles.photoRow}>
+        {photoUris.map((uri, i) => (
+          <View key={i} style={styles.photoThumb}>
+            <Image source={{ uri }} style={styles.thumbImage} />
+            <TouchableOpacity
+              style={styles.removePhoto}
+              onPress={() => setPhotoUris(prev => prev.filter((_, idx) => idx !== i))}
+            >
+              <Text style={styles.removePhotoText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+      </View>
+      {photoUris.length < MAX_PHOTOS && (
+        <TouchableOpacity style={styles.photoButton} onPress={handlePickPhoto}>
+          <Text style={styles.photoButtonText}>Attach Photo</Text>
+        </TouchableOpacity>
+      )}
+
       <TouchableOpacity
         style={[styles.submit, submitting && styles.submitDisabled]}
         onPress={handleSubmit}
@@ -113,8 +154,15 @@ const styles = StyleSheet.create({
   optionText: { color: '#374151' },
   optionTextSelected: { color: '#111827', fontWeight: '600' },
   textInput: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 12, minHeight: 100, textAlignVertical: 'top', fontSize: 14, color: '#374151' },
+  hint: { marginTop: 6, fontSize: 12, color: '#9ca3af' },
+  photoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  photoThumb: { position: 'relative' },
+  thumbImage: { width: 64, height: 64, borderRadius: 6 },
+  removePhoto: { position: 'absolute', top: -6, right: -6, backgroundColor: '#111827', borderRadius: 10, width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
+  removePhotoText: { color: '#fff', fontSize: 10 },
+  photoButton: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 12, alignItems: 'center', marginTop: 4 },
+  photoButtonText: { color: '#374151', fontSize: 14 },
   submit: { marginTop: 24, backgroundColor: '#111827', borderRadius: 8, padding: 14, alignItems: 'center' },
   submitDisabled: { opacity: 0.5 },
   submitText: { color: '#fff', fontWeight: '600', fontSize: 15 },
-  hint: { marginTop: 6, fontSize: 12, color: '#9ca3af' },
 });
