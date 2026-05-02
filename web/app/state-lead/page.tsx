@@ -68,7 +68,7 @@ export default function StateLeadDashboard() {
           <BarChart
             data={stats}
             margin={{ top: 4, right: 8, left: 0, bottom: 48 }}
-            onClick={e => {
+            onClick={(e: any) => {
               if (!drillDistrict && e?.activePayload?.[0]?.payload?.name) {
                 setDrillDistrict(e.activePayload[0].payload.name);
               }
