@@ -23,6 +23,12 @@ jest.mock('expo-image-manipulator', () => ({
   SaveFormat: { JPEG: 'jpeg' },
 }));
 
+jest.mock('expo-location', () => ({
+  requestForegroundPermissionsAsync: jest.fn().mockResolvedValue({ status: 'granted' }),
+  getCurrentPositionAsync: jest.fn().mockResolvedValue({ coords: { latitude: 26.9, longitude: 75.8 } }),
+  Accuracy: { Balanced: 3 },
+}));
+
 const WORKERS = [{ field_worker_name: 'Worker One' }, { field_worker_name: 'Worker Two' }];
 const VILLAGES = [{ village_name: 'Village A' }, { village_name: 'Village B' }];
 
@@ -99,7 +105,12 @@ test('submitting with text calls queueObservation and syncPending', async () => 
   fireEvent.press(getByText('Submit'));
   await waitFor(() => {
     expect(queueObservation).toHaveBeenCalledWith(
-      expect.objectContaining({ text: 'Test note', block_lead_email: 'test-block-lead@placeholder.local' })
+      expect.objectContaining({
+        text: 'Test note',
+        block_lead_email: 'test-block-lead@placeholder.local',
+        gps_lat: 26.9,
+        gps_lng: 75.8,
+      })
     );
     expect(syncPending).toHaveBeenCalled();
   });

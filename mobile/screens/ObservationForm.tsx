@@ -6,6 +6,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import * as Location from 'expo-location';
 import { queueObservation } from '../lib/db';
 import { syncPending } from '../lib/sync';
 
@@ -24,6 +25,10 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
   const [observationText, setObservationText] = useState('');
   const [photoUris, setPhotoUris] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    Location.requestForegroundPermissionsAsync();
+  }, []);
 
   useEffect(() => {
     fetch(`${FIELD_WORKERS_URL}?block_lead_email=${encodeURIComponent(blockLeadEmail)}`)
@@ -58,6 +63,17 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
     if (!observationText.trim()) return;
     setSubmitting(true);
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    let gps_lat: number | undefined;
+    let gps_lng: number | undefined;
+    try {
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      gps_lat = loc.coords.latitude;
+      gps_lng = loc.coords.longitude;
+    } catch {
+      // permission denied or unavailable — submit without GPS
+    }
+
     queueObservation({
       id,
       text: observationText,
@@ -65,6 +81,8 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
       village_name: selectedVillage,
       block_lead_email: blockLeadEmail,
       photo_uris: photoUris,
+      gps_lat,
+      gps_lng,
       submitted_at: new Date().toISOString(),
     });
     await syncPending();
