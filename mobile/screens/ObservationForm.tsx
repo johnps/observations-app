@@ -43,6 +43,15 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
       .then(b => setVillages((b.villages ?? []).map((v: { village_name: string }) => v.village_name)));
   }, [selectedWorker, blockLeadEmail]);
 
+  async function addPhoto(uri: string, width: number) {
+    const resized = await ImageManipulator.manipulateAsync(
+      uri,
+      [{ resize: { width: Math.min(width, 1280) } }],
+      { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
+    );
+    setPhotoUris(prev => [...prev, resized.uri]);
+  }
+
   async function handlePickPhoto() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -50,13 +59,19 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
       quality: 1,
     });
     if (result.canceled || !result.assets?.[0]) return;
-    const asset = result.assets[0];
-    const resized = await ImageManipulator.manipulateAsync(
-      asset.uri,
-      [{ resize: { width: Math.min(asset.width, 1280) } }],
-      { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
-    );
-    setPhotoUris(prev => [...prev, resized.uri]);
+    const { uri, width } = result.assets[0];
+    await addPhoto(uri, width);
+  }
+
+  async function handleTakePhoto() {
+    await ImagePicker.requestCameraPermissionsAsync();
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 1,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const { uri, width } = result.assets[0];
+    await addPhoto(uri, width);
   }
 
   async function handleSubmit() {
@@ -146,9 +161,14 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
         ))}
       </View>
       {photoUris.length < MAX_PHOTOS && (
-        <TouchableOpacity style={styles.photoButton} onPress={handlePickPhoto}>
-          <Text style={styles.photoButtonText}>Attach Photo</Text>
-        </TouchableOpacity>
+        <View style={styles.photoButtons}>
+          <TouchableOpacity style={[styles.photoButton, { flex: 1 }]} onPress={handleTakePhoto}>
+            <Text style={styles.photoButtonText}>Take Photo</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.photoButton, { flex: 1 }]} onPress={handlePickPhoto}>
+            <Text style={styles.photoButtonText}>Attach Photo</Text>
+          </TouchableOpacity>
+        </View>
       )}
 
       <TouchableOpacity
@@ -178,7 +198,8 @@ const styles = StyleSheet.create({
   thumbImage: { width: 64, height: 64, borderRadius: 6 },
   removePhoto: { position: 'absolute', top: -6, right: -6, backgroundColor: '#111827', borderRadius: 10, width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
   removePhotoText: { color: '#fff', fontSize: 10 },
-  photoButton: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 12, alignItems: 'center', marginTop: 4 },
+  photoButtons: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  photoButton: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 12, alignItems: 'center' },
   photoButtonText: { color: '#374151', fontSize: 14 },
   submit: { marginTop: 24, backgroundColor: '#111827', borderRadius: 8, padding: 14, alignItems: 'center' },
   submitDisabled: { opacity: 0.5 },

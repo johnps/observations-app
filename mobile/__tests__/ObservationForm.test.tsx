@@ -15,6 +15,8 @@ jest.mock('../lib/sync', () => ({ syncPending: jest.fn().mockResolvedValue(undef
 
 jest.mock('expo-image-picker', () => ({
   launchImageLibraryAsync: jest.fn(),
+  launchCameraAsync: jest.fn(),
+  requestCameraPermissionsAsync: jest.fn().mockResolvedValue({ status: 'granted' }),
   MediaTypeOptions: { Images: 'Images' },
 }));
 
@@ -69,6 +71,30 @@ test('photo attach button is visible', async () => {
     <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
   );
   await waitFor(() => expect(getByText(/attach photo/i)).toBeTruthy());
+});
+
+test('camera button is visible', async () => {
+  const { getByText } = render(
+    <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
+  );
+  await waitFor(() => expect(getByText(/take photo/i)).toBeTruthy());
+});
+
+test('take photo button calls launchCameraAsync', async () => {
+  const ImagePicker = require('expo-image-picker');
+  const ImageManipulator = require('expo-image-manipulator');
+  ImagePicker.launchCameraAsync.mockResolvedValue({
+    canceled: false,
+    assets: [{ uri: 'file:///camera.jpg', width: 1920, height: 1080 }],
+  });
+  ImageManipulator.manipulateAsync.mockResolvedValue({ uri: 'file:///camera_resized.jpg' });
+
+  const { getByText } = render(
+    <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
+  );
+  await waitFor(() => getByText(/take photo/i));
+  fireEvent.press(getByText(/take photo/i));
+  await waitFor(() => expect(ImagePicker.launchCameraAsync).toHaveBeenCalled());
 });
 
 test('submitting includes photo_uris when photos are selected', async () => {
