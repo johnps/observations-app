@@ -4,8 +4,11 @@ import {
   StyleSheet, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { queueObservation } from '../lib/db';
+import { syncPending } from '../lib/sync';
 
-const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+const FIELD_WORKERS_URL = `${process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000'}/api/hierarchy/field-workers`;
+const VILLAGES_URL = `${process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000'}/api/hierarchy/villages`;
 
 type Props = { blockLeadEmail: string };
 
@@ -19,14 +22,14 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/hierarchy/field-workers?block_lead_email=${encodeURIComponent(blockLeadEmail)}`)
+    fetch(`${FIELD_WORKERS_URL}?block_lead_email=${encodeURIComponent(blockLeadEmail)}`)
       .then(r => r.json())
       .then(b => setFieldWorkers((b.field_workers ?? []).map((w: { field_worker_name: string }) => w.field_worker_name)));
   }, [blockLeadEmail]);
 
   useEffect(() => {
     if (!selectedWorker) { setVillages([]); return; }
-    fetch(`${API_BASE}/api/hierarchy/villages?block_lead_email=${encodeURIComponent(blockLeadEmail)}&field_worker_name=${encodeURIComponent(selectedWorker)}`)
+    fetch(`${VILLAGES_URL}?block_lead_email=${encodeURIComponent(blockLeadEmail)}&field_worker_name=${encodeURIComponent(selectedWorker)}`)
       .then(r => r.json())
       .then(b => setVillages((b.villages ?? []).map((v: { village_name: string }) => v.village_name)));
   }, [selectedWorker, blockLeadEmail]);
@@ -35,18 +38,15 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
     if (!observationText.trim()) return;
     setSubmitting(true);
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    await fetch(`${API_BASE}/api/observations`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id,
-        text: observationText,
-        field_worker_name: selectedWorker,
-        village_name: selectedVillage,
-        block_lead_email: blockLeadEmail,
-        submitted_at: new Date().toISOString(),
-      }),
+    queueObservation({
+      id,
+      text: observationText,
+      field_worker_name: selectedWorker,
+      village_name: selectedVillage,
+      block_lead_email: blockLeadEmail,
+      submitted_at: new Date().toISOString(),
     });
+    await syncPending();
     setSubmitting(false);
     navigation.goBack();
   }

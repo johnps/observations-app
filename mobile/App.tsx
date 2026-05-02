@@ -1,7 +1,10 @@
-import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import React, { useEffect } from 'react';
+import { AppState, View, Text, TouchableOpacity } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { initDB } from './lib/db';
+import { syncPending } from './lib/sync';
 import LoginScreen from './screens/LoginScreen';
 import ObservationForm from './screens/ObservationForm';
 
@@ -25,6 +28,21 @@ function HomeScreen({ title }: { title: string }) {
 }
 
 export default function App() {
+  useEffect(() => {
+    initDB();
+    syncPending();
+    const appSub = AppState.addEventListener('change', state => {
+      if (state === 'active') syncPending();
+    });
+    const netSub = NetInfo.addEventListener(netState => {
+      if (netState.isConnected) syncPending();
+    });
+    return () => {
+      appSub.remove();
+      netSub();
+    };
+  }, []);
+
   return (
     <NavigationContainer>
       <Stack.Navigator initialRouteName="Login">
