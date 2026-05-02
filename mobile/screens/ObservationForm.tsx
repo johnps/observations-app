@@ -85,9 +85,12 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
         placeholder="Write your observation…"
         multiline
         numberOfLines={4}
+        autoCorrect
+        autoCapitalize="sentences"
         value={observationText}
         onChangeText={setObservationText}
       />
+      <Text style={styles.hint}>Tap the mic on your keyboard to dictate in Hindi or English</Text>
 
       <TouchableOpacity
         style={[styles.submit, submitting && styles.submitDisabled]}
@@ -113,4 +116,5 @@ const styles = StyleSheet.create({
   submit: { marginTop: 24, backgroundColor: '#111827', borderRadius: 8, padding: 14, alignItems: 'center' },
   submitDisabled: { opacity: 0.5 },
   submitText: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  hint: { marginTop: 6, fontSize: 12, color: '#9ca3af' },
 });

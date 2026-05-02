@@ -32,11 +32,12 @@ beforeEach(() => {
   });
 });
 
-test('observation form renders text input and submit button', async () => {
+test('observation form renders text input, STT hint, and submit button', async () => {
   const { getByPlaceholderText, getByText } = render(
     <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
   );
   await waitFor(() => expect(getByPlaceholderText(/observation/i)).toBeTruthy());
+  expect(getByText(/tap the mic/i)).toBeTruthy();
   expect(getByText('Submit')).toBeTruthy();
 });
 
