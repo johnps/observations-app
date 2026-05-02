@@ -1,0 +1,15 @@
+{
+  "cli": {
+    "version": ">= 12.0.0"
+  },
+  "build": {
+    "apk": {
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://observations-app.vercel.app"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    }
+  }
+}
