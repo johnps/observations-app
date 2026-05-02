@@ -1,5 +1,25 @@
 import { supabaseAdmin } from './supabase';
 
+export async function getFieldWorkers(blockLeadEmail: string) {
+  const { data } = await supabaseAdmin
+    .from('hierarchy')
+    .select('field_worker_name')
+    .eq('block_lead_email', blockLeadEmail)
+    .eq('status', 'active');
+  const unique = [...new Set((data ?? []).map(r => r.field_worker_name))];
+  return unique.map(name => ({ field_worker_name: name }));
+}
+
+export async function getVillages(blockLeadEmail: string, fieldWorkerName: string) {
+  const { data } = await supabaseAdmin
+    .from('hierarchy')
+    .select('village_name')
+    .eq('block_lead_email', blockLeadEmail)
+    .eq('field_worker_name', fieldWorkerName)
+    .eq('status', 'active');
+  return (data ?? []).map(r => ({ village_name: r.village_name }));
+}
+
 export const MANDATORY_COLUMNS = [
   'state', 'district', 'block', 'block_lead_email', 'field_worker_name', 'village_name',
 ] as const;
