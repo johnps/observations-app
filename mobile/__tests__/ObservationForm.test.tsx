@@ -70,11 +70,45 @@ test('observation form renders text input, STT hint, and submit button', async (
   expect(getByText('Submit')).toBeTruthy();
 });
 
-test('form loads field workers on mount', async () => {
-  const { getByText } = render(
+test('field worker selector shows placeholder before selection', async () => {
+  const { getByTestId } = render(
     <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
   );
+  await waitFor(() => expect(getByTestId('field-worker-picker')).toBeTruthy());
+  expect(getByTestId('field-worker-picker')).toHaveTextContent(/Select field worker/);
+});
+
+test('tapping field worker selector opens modal with worker names', async () => {
+  const { getByTestId, getByText } = render(
+    <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
+  );
+  await waitFor(() => getByTestId('field-worker-picker'));
+  fireEvent.press(getByTestId('field-worker-picker'));
   await waitFor(() => expect(getByText('Worker One')).toBeTruthy());
+  expect(getByText('Worker Two')).toBeTruthy();
+});
+
+test('selecting a worker from the modal closes it and shows the name in the selector', async () => {
+  const { getByTestId, getByText, queryByText } = render(
+    <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
+  );
+  await waitFor(() => getByTestId('field-worker-picker'));
+  fireEvent.press(getByTestId('field-worker-picker'));
+  await waitFor(() => getByText('Worker One'));
+  fireEvent.press(getByText('Worker One'));
+  await waitFor(() => expect(getByTestId('field-worker-picker')).toHaveTextContent(/Worker One/));
+  expect(queryByText('Worker Two')).toBeNull(); // modal closed, FlatList unmounted
+});
+
+test('form loads field workers on mount (shown in picker after load)', async () => {
+  const { getByTestId } = render(
+    <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
+  );
+  // After load the picker should be enabled (not show a loading spinner)
+  await waitFor(() => {
+    const picker = getByTestId('field-worker-picker');
+    expect(picker.props.accessibilityState?.disabled).toBeFalsy();
+  });
 });
 
 test('photo attach button is visible', async () => {
@@ -108,6 +142,58 @@ test('take photo button calls launchCameraAsync', async () => {
   await waitFor(() => expect(ImagePicker.launchCameraAsync).toHaveBeenCalled());
 });
 
+// Helper: select a worker and village via modal pickers
+async function selectWorkerAndVillage(
+  getByTestId: ReturnType<typeof render>['getByTestId'],
+  getByText: ReturnType<typeof render>['getByText'],
+  worker = 'Worker One',
+  village = 'Village A',
+) {
+  await waitFor(() => getByTestId('field-worker-picker'));
+  fireEvent.press(getByTestId('field-worker-picker'));
+  await waitFor(() => getByText(worker));
+  fireEvent.press(getByText(worker));
+  await waitFor(() => getByTestId('village-picker'));
+  fireEvent.press(getByTestId('village-picker'));
+  await waitFor(() => getByText(village));
+  fireEvent.press(getByText(village));
+}
+
+test('village picker is disabled until a worker is selected', async () => {
+  const { getByTestId } = render(
+    <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
+  );
+  await waitFor(() => getByTestId('field-worker-picker'));
+  expect(getByTestId('village-picker').props.accessibilityState?.disabled).toBe(true);
+});
+
+test('village picker is enabled after selecting a worker', async () => {
+  const { getByTestId, getByText } = render(
+    <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
+  );
+  await waitFor(() => getByTestId('field-worker-picker'));
+  fireEvent.press(getByTestId('field-worker-picker'));
+  await waitFor(() => getByText('Worker One'));
+  fireEvent.press(getByText('Worker One'));
+  await waitFor(() =>
+    expect(getByTestId('village-picker').props.accessibilityState?.disabled).toBeFalsy()
+  );
+});
+
+test('tapping village picker after worker selection shows villages', async () => {
+  const { getByTestId, getByText } = render(
+    <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
+  );
+  await waitFor(() => getByTestId('field-worker-picker'));
+  fireEvent.press(getByTestId('field-worker-picker'));
+  await waitFor(() => getByText('Worker One'));
+  fireEvent.press(getByText('Worker One'));
+  await waitFor(() => getByTestId('village-picker'));
+  fireEvent.press(getByTestId('village-picker'));
+  await waitFor(() => expect(getByText('Village A')).toBeTruthy());
+  expect(getByText('Village B')).toBeTruthy();
+});
+
 test('submitting includes photo_uris when photos are selected', async () => {
   const ImagePicker = require('expo-image-picker');
   const ImageManipulator = require('expo-image-manipulator');
@@ -117,13 +203,10 @@ test('submitting includes photo_uris when photos are selected', async () => {
   });
   ImageManipulator.manipulateAsync.mockResolvedValue({ uri: 'file:///photo1_resized.jpg' });
 
-  const { getByPlaceholderText, getByText } = render(
+  const { getByPlaceholderText, getByText, getByTestId } = render(
     <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
   );
-  await waitFor(() => getByText('Worker One'));
-  fireEvent.press(getByText('Worker One'));
-  await waitFor(() => getByText('Village A'));
-  fireEvent.press(getByText('Village A'));
+  await selectWorkerAndVillage(getByTestId, getByText);
 
   fireEvent.press(getByText(/attach photo/i));
   await waitFor(() => expect(ImageManipulator.manipulateAsync).toHaveBeenCalled());
@@ -139,13 +222,10 @@ test('submitting includes photo_uris when photos are selected', async () => {
 
 test('submitted observation id is a valid UUID (non-UUID ids are rejected by Supabase)', async () => {
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  const { getByPlaceholderText, getByText } = render(
+  const { getByPlaceholderText, getByText, getByTestId } = render(
     <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
   );
-  await waitFor(() => getByText('Worker One'));
-  fireEvent.press(getByText('Worker One'));
-  await waitFor(() => getByText('Village A'));
-  fireEvent.press(getByText('Village A'));
+  await selectWorkerAndVillage(getByTestId, getByText);
   fireEvent.changeText(getByPlaceholderText(/observation/i), 'UUID test');
   fireEvent.press(getByText('Submit'));
   await waitFor(() => expect(queueObservation).toHaveBeenCalled());
@@ -154,13 +234,10 @@ test('submitted observation id is a valid UUID (non-UUID ids are rejected by Sup
 });
 
 test('submitting with text calls queueObservation and syncPending', async () => {
-  const { getByPlaceholderText, getByText } = render(
+  const { getByPlaceholderText, getByText, getByTestId } = render(
     <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
   );
-  await waitFor(() => getByText('Worker One'));
-  fireEvent.press(getByText('Worker One'));
-  await waitFor(() => getByText('Village A'));
-  fireEvent.press(getByText('Village A'));
+  await selectWorkerAndVillage(getByTestId, getByText);
   fireEvent.changeText(getByPlaceholderText(/observation/i), 'Test note');
   fireEvent.press(getByText('Submit'));
   await waitFor(() => {
