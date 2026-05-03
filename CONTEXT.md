@@ -124,9 +124,11 @@ Technical or programme management staff. Sets up and maintains the system: uploa
 
 ## Authentication
 
-**Auth (deferred):** Full Google SSO with backend-issued 30-day JWT is the target architecture but is not built in MVP. All roles use the auth placeholder during initial development.
+Google SSO is live via Supabase Auth (PKCE flow). The login page calls `supabase.auth.signInWithOAuth({ provider: 'google' })` and redirects to `/auth/callback` which exchanges the code for a session. After sign-in, the session is checked against the `users` table to determine the role, and the user is routed to their role's home screen. If the email is not in `users`, a "no access" message is shown.
 
-**Auth placeholder (MVP):** The login screen shows four buttons — Admin, District Lead, Block Lead, State Lead — each mapped to a pre-seeded placeholder identity (e.g. `test-admin@placeholder.local`). No text input, no real emails. These identities are seeded in the DB at deploy time with proper role and geography assignments. When testing is complete, all placeholder data is wiped with a single SQL command. When real auth ships, the placeholder screen is removed and replaced with Google SSO; placeholder DB accounts are deleted in a migration.
+Roles are assigned manually by an admin in `/admin/users`. There is no invite flow — users can attempt to sign in at any time, but they see "no access" until an admin assigns them a role.
+
+The placeholder auth (four hard-coded buttons) has been removed. The placeholder DB accounts (`test-*@placeholder.local`) can be deleted.
 
 ## Sync model
 
