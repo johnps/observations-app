@@ -4,8 +4,14 @@ import { uploadPhoto } from './storage';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
-export async function syncPending() {
+export type SyncResult = { synced: number; failed: number; errors: string[] };
+
+export async function syncPending(): Promise<SyncResult> {
   const pending = getPendingObservations();
+  let synced = 0;
+  let failed = 0;
+  const errors: string[] = [];
+
   for (const row of pending) {
     try {
       const obs = JSON.parse(row.payload) as Record<string, unknown>;
@@ -30,11 +36,24 @@ export async function syncPending() {
           try { await FileSystem.deleteAsync(uri, { idempotent: true }); } catch {}
         }
         markSynced(row.id);
+        synced++;
+      } else if (res.status === 400) {
+        // Bad data — will never succeed, discard it
+        const body = await res.json().catch(() => ({}));
+        errors.push(`Discarded observation ${row.id}: ${body.error ?? 'invalid data'}`);
+        markSynced(row.id);
+        failed++;
+      } else {
+        // Server error — leave in queue, retry later
+        failed++;
       }
     } catch {
-      // network or upload error — leave in queue for next sync attempt
+      // Network error — leave in queue for next sync attempt
+      failed++;
     }
   }
+
+  return { synced, failed, errors };
 }
 
 export async function syncHierarchy(blockLeadEmail: string) {

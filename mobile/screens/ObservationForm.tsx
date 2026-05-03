@@ -25,6 +25,7 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
   const [observationText, setObservationText] = useState('');
   const [photoUris, setPhotoUris] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   useEffect(() => {
     Location.requestForegroundPermissionsAsync();
@@ -86,7 +87,10 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
 
   async function handleSubmit() {
     if (!observationText.trim()) return;
+    if (!selectedWorker) { setSubmitError('Please select a field worker.'); return; }
+    if (!selectedVillage) { setSubmitError('Please select a village.'); return; }
     setSubmitting(true);
+    setSubmitError('');
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
     let gps_lat: number | undefined;
@@ -110,8 +114,11 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
       gps_lng,
       submitted_at: new Date().toISOString(),
     });
-    await syncPending();
+    const result = await syncPending();
     setSubmitting(false);
+    if (result.failed > 0 && result.synced === 0) {
+      setSubmitError('Saved offline — will sync when connection improves.');
+    }
     navigation.goBack();
   }
 
@@ -181,6 +188,7 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
         </View>
       )}
 
+      {submitError ? <Text style={styles.error}>{submitError}</Text> : null}
       <TouchableOpacity
         style={[styles.submit, submitting && styles.submitDisabled]}
         onPress={handleSubmit}
@@ -214,4 +222,5 @@ const styles = StyleSheet.create({
   submit: { marginTop: 24, backgroundColor: '#111827', borderRadius: 8, padding: 14, alignItems: 'center' },
   submitDisabled: { opacity: 0.5 },
   submitText: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  error: { marginTop: 12, fontSize: 13, color: '#dc2626', textAlign: 'center' },
 });
