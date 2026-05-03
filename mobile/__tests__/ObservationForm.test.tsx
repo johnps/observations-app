@@ -50,6 +50,9 @@ beforeEach(() => {
   mockGoBack.mockClear();
   (queueObservation as jest.Mock).mockClear();
   (syncPending as jest.Mock).mockResolvedValue({ synced: 1, failed: 0, errors: [] });
+  // Reset location mock so GPS-hang tests don't contaminate subsequent tests
+  const Location = require('expo-location');
+  Location.getCurrentPositionAsync.mockResolvedValue({ coords: { latitude: 26.9, longitude: 75.8 } });
   (global.fetch as jest.Mock) = jest.fn((url: string) => {
     if (url.includes('field-workers')) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ field_workers: WORKERS }) });
@@ -194,6 +197,65 @@ test('tapping village picker after worker selection shows villages', async () =>
   expect(getByText('Village B')).toBeTruthy();
 });
 
+test('shows error below photos when camera processing fails', async () => {
+  const ImagePicker = require('expo-image-picker');
+  const ImageManipulator = require('expo-image-manipulator');
+  ImagePicker.launchCameraAsync.mockResolvedValue({
+    canceled: false,
+    assets: [{ uri: 'file:///camera.jpg', width: 1920, height: 1080 }],
+  });
+  ImageManipulator.manipulateAsync.mockRejectedValue(new Error('Processing failed'));
+
+  const { getByText, findByText } = render(
+    <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
+  );
+  await waitFor(() => getByText(/take photo/i));
+  fireEvent.press(getByText(/take photo/i));
+  expect(await findByText(/could not process photo/i)).toBeTruthy();
+});
+
+test('shows error below photos when gallery processing fails', async () => {
+  const ImagePicker = require('expo-image-picker');
+  const ImageManipulator = require('expo-image-manipulator');
+  ImagePicker.launchImageLibraryAsync.mockResolvedValue({
+    canceled: false,
+    assets: [{ uri: 'file:///gallery.jpg', width: 2000, height: 1500 }],
+  });
+  ImageManipulator.manipulateAsync.mockRejectedValue(new Error('Processing failed'));
+
+  const { getByText, findByText } = render(
+    <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
+  );
+  await waitFor(() => getByText(/attach photo/i));
+  fireEvent.press(getByText(/attach photo/i));
+  expect(await findByText(/could not process photo/i)).toBeTruthy();
+});
+
+test('photo error clears on next successful attempt', async () => {
+  const ImagePicker = require('expo-image-picker');
+  const ImageManipulator = require('expo-image-manipulator');
+  ImagePicker.launchCameraAsync.mockResolvedValue({
+    canceled: false,
+    assets: [{ uri: 'file:///camera.jpg', width: 1920, height: 1080 }],
+  });
+  ImageManipulator.manipulateAsync
+    .mockRejectedValueOnce(new Error('Processing failed'))
+    .mockResolvedValueOnce({ uri: 'file:///camera_resized.jpg' });
+
+  const { getByText, findByText, queryByText } = render(
+    <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
+  );
+  await waitFor(() => getByText(/take photo/i));
+  fireEvent.press(getByText(/take photo/i));
+  await findByText(/could not process photo/i);
+
+  fireEvent.press(getByText(/take photo/i));
+  await waitFor(() => {
+    expect(queryByText(/could not process photo/i)).toBeNull();
+    expect(getByText(/photos \(1/i)).toBeTruthy();
+  });
+});
+
 test('submitting includes photo_uris when photos are selected', async () => {
   const ImagePicker = require('expo-image-picker');
   const ImageManipulator = require('expo-image-manipulator');
@@ -231,6 +293,27 @@ test('submitted observation id is a valid UUID (non-UUID ids are rejected by Sup
   await waitFor(() => expect(queueObservation).toHaveBeenCalled());
   const { id } = (queueObservation as jest.Mock).mock.calls[0][0];
   expect(UUID_RE.test(id)).toBe(true);
+});
+
+test('submit proceeds without GPS fields when location hangs past 5s', async () => {
+  const Location = require('expo-location');
+  Location.getCurrentPositionAsync.mockReturnValue(new Promise(() => {})); // never resolves
+
+  const { getByPlaceholderText, getByText, getByTestId } = render(
+    <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
+  );
+  await selectWorkerAndVillage(getByTestId, getByText);
+  fireEvent.changeText(getByPlaceholderText(/observation/i), 'GPS hang test');
+
+  jest.useFakeTimers();
+  fireEvent.press(getByText('Submit'));
+  await jest.advanceTimersByTimeAsync(5001);
+  jest.useRealTimers();
+
+  await waitFor(() => expect(queueObservation).toHaveBeenCalled());
+  const call = (queueObservation as jest.Mock).mock.calls[0][0];
+  expect(call.gps_lat).toBeUndefined();
+  expect(call.gps_lng).toBeUndefined();
 });
 
 test('submitting with text calls queueObservation and syncPending', async () => {

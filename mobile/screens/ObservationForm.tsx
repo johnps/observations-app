@@ -104,6 +104,7 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
   const [loadingWorkers, setLoadingWorkers] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [photoError, setPhotoError] = useState('');
 
   useEffect(() => {
     Location.requestForegroundPermissionsAsync();
@@ -148,6 +149,7 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
   }
 
   async function handlePickPhoto() {
+    setPhotoError('');
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: false,
@@ -155,10 +157,15 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
     });
     if (result.canceled || !result.assets?.[0]) return;
     const { uri, width } = result.assets[0];
-    await addPhoto(uri, width);
+    try {
+      await addPhoto(uri, width);
+    } catch {
+      setPhotoError('Could not process photo — please try again.');
+    }
   }
 
   async function handleTakePhoto() {
+    setPhotoError('');
     await ImagePicker.requestCameraPermissionsAsync();
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -166,7 +173,11 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
     });
     if (result.canceled || !result.assets?.[0]) return;
     const { uri, width } = result.assets[0];
-    await addPhoto(uri, width);
+    try {
+      await addPhoto(uri, width);
+    } catch {
+      setPhotoError('Could not process photo — please try again.');
+    }
   }
 
   async function handleSubmit() {
@@ -179,12 +190,20 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
 
     let gps_lat: number | undefined;
     let gps_lng: number | undefined;
+    let gpsTimer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const loc = await Promise.race([
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+        new Promise<never>((_, reject) => {
+          gpsTimer = setTimeout(() => reject(new Error('GPS timeout')), 5_000);
+        }),
+      ]);
       gps_lat = loc.coords.latitude;
       gps_lng = loc.coords.longitude;
     } catch {
-      // permission denied or unavailable — submit without GPS
+      // permission denied, unavailable, or timed out — submit without GPS
+    } finally {
+      clearTimeout(gpsTimer);
     }
 
     try {
@@ -277,6 +296,7 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
           </View>
         )}
 
+        {photoError ? <Text style={styles.error}>{photoError}</Text> : null}
         {submitError ? <Text style={styles.error}>{submitError}</Text> : null}
         <TouchableOpacity
           style={[styles.submit, (submitting || loadingWorkers) && styles.submitDisabled]}
