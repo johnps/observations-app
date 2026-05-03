@@ -34,6 +34,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "1dff2392-4d78-4d72-9357-b7417eed79c9"
+      }
+    },
+    "owner": "johnpauls"
   }
 }
