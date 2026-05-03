@@ -29,11 +29,25 @@ export default function LoginScreen() {
       const result = await WebBrowser.openAuthSessionAsync(data.url, 'livelihood-monitor://');
       if (result.type !== 'success') { setLoading(false); return; }
 
-      const code = new URL(result.url).searchParams.get('code');
-      if (!code) throw new Error('No code in callback');
+      const parsed = new URL(result.url);
+      const code = parsed.searchParams.get('code');
 
-      const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
-      if (sessionError) throw sessionError;
+      if (code) {
+        const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
+        if (sessionError) throw sessionError;
+      } else {
+        // Implicit flow — tokens arrive as hash fragment
+        const hash = parsed.hash.slice(1);
+        const params = new URLSearchParams(hash);
+        const accessToken = params.get('access_token');
+        const refreshToken = params.get('refresh_token');
+        if (!accessToken) throw new Error('Sign in failed — no token received');
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken ?? '',
+        });
+        if (sessionError) throw sessionError;
+      }
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user?.email) throw new Error('No email from Google');
