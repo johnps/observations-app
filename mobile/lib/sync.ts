@@ -53,6 +53,9 @@ export async function syncPending(): Promise<SyncResult> {
           markSynced(row.id);
           synced++;
         } else if (res.status === 400) {
+          for (const uri of photoUris) {
+            try { await FileSystem.deleteAsync(uri, { idempotent: true }); } catch {}
+          }
           const body = await res.json().catch(() => ({}));
           errors.push(`Discarded observation ${row.id}: ${body.error ?? 'invalid data'}`);
           markSynced(row.id);

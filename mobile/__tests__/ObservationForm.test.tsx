@@ -10,8 +10,12 @@ jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ navigate: mockNavigate, goBack: mockGoBack }),
 }));
 
-jest.mock('../lib/db', () => ({ queueObservation: jest.fn() }));
-jest.mock('../lib/sync', () => ({ syncPending: jest.fn().mockResolvedValue(undefined) }));
+jest.mock('../lib/db', () => ({
+  queueObservation: jest.fn(),
+  getCachedFieldWorkers: jest.fn().mockReturnValue([]),
+  getCachedVillages: jest.fn().mockReturnValue([]),
+}));
+jest.mock('../lib/sync', () => ({ syncPending: jest.fn().mockResolvedValue({ synced: 1, failed: 0, errors: [] }) }));
 
 jest.mock('expo-image-picker', () => ({
   launchImageLibraryAsync: jest.fn(),
@@ -31,6 +35,13 @@ jest.mock('expo-location', () => ({
   Accuracy: { Balanced: 3 },
 }));
 
+jest.mock('expo-file-system', () => ({
+  documentDirectory: 'file:///documents/',
+  makeDirectoryAsync: jest.fn().mockResolvedValue(undefined),
+  copyAsync: jest.fn().mockResolvedValue(undefined),
+  deleteAsync: jest.fn().mockResolvedValue(undefined),
+}));
+
 const WORKERS = [{ field_worker_name: 'Worker One' }, { field_worker_name: 'Worker Two' }];
 const VILLAGES = [{ village_name: 'Village A' }, { village_name: 'Village B' }];
 
@@ -38,7 +49,7 @@ beforeEach(() => {
   mockNavigate.mockClear();
   mockGoBack.mockClear();
   (queueObservation as jest.Mock).mockClear();
-  (syncPending as jest.Mock).mockResolvedValue(undefined);
+  (syncPending as jest.Mock).mockResolvedValue({ synced: 1, failed: 0, errors: [] });
   (global.fetch as jest.Mock) = jest.fn((url: string) => {
     if (url.includes('field-workers')) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ field_workers: WORKERS }) });
@@ -109,7 +120,11 @@ test('submitting includes photo_uris when photos are selected', async () => {
   const { getByPlaceholderText, getByText } = render(
     <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
   );
-  await waitFor(() => getByText(/attach photo/i));
+  await waitFor(() => getByText('Worker One'));
+  fireEvent.press(getByText('Worker One'));
+  await waitFor(() => getByText('Village A'));
+  fireEvent.press(getByText('Village A'));
+
   fireEvent.press(getByText(/attach photo/i));
   await waitFor(() => expect(ImageManipulator.manipulateAsync).toHaveBeenCalled());
 
@@ -117,7 +132,7 @@ test('submitting includes photo_uris when photos are selected', async () => {
   fireEvent.press(getByText('Submit'));
   await waitFor(() =>
     expect(queueObservation).toHaveBeenCalledWith(
-      expect.objectContaining({ photo_uris: ['file:///photo1_resized.jpg'] })
+      expect.objectContaining({ photo_uris: expect.arrayContaining([expect.stringContaining('obs_photos')]) })
     )
   );
 });
@@ -127,6 +142,9 @@ test('submitting with text calls queueObservation and syncPending', async () => 
     <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
   );
   await waitFor(() => getByText('Worker One'));
+  fireEvent.press(getByText('Worker One'));
+  await waitFor(() => getByText('Village A'));
+  fireEvent.press(getByText('Village A'));
   fireEvent.changeText(getByPlaceholderText(/observation/i), 'Test note');
   fireEvent.press(getByText('Submit'));
   await waitFor(() => {

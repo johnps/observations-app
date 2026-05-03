@@ -25,3 +25,23 @@ test('uploadPhoto throws when upload response is not ok', async () => {
 
   await expect(uploadPhoto('file:///tmp/photo.jpg', 'obs-123', 0)).rejects.toThrow('Upload failed');
 });
+
+// Issue C: upload timeout
+test('uploadPhoto throws when upload times out', async () => {
+  jest.useFakeTimers();
+  (global.fetch as jest.Mock).mockImplementation((_url: string, options: RequestInit) =>
+    new Promise((_resolve, reject) => {
+      options?.signal?.addEventListener('abort', () =>
+        reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }))
+      );
+    })
+  );
+
+  const uploadPromise = uploadPhoto('file:///tmp/photo.jpg', 'obs-123', 0);
+  // Attach the assertion before advancing time so the rejection handler is in place
+  // when the AbortController fires — avoids an unhandled-rejection warning.
+  const assertion = expect(uploadPromise).rejects.toThrow();
+  await jest.advanceTimersByTimeAsync(61_000);
+  await assertion;
+  jest.useRealTimers();
+});

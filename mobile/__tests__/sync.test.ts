@@ -100,6 +100,28 @@ test('syncPending does not run concurrently', async () => {
   await firstSync;
 });
 
+// Issue D: photo cleanup on 400
+test('syncPending deletes local photo files when server discards observation with 400', async () => {
+  const FileSystem = require('expo-file-system');
+  const row = {
+    id: 'mno',
+    payload: JSON.stringify({ id: 'mno', text: 'test', photo_uris: ['file:///d.jpg'] }),
+  };
+  (getPendingObservations as jest.Mock).mockReturnValue([row]);
+  (uploadPhoto as jest.Mock).mockResolvedValue('https://storage.example.com/d.jpg');
+  (global.fetch as jest.Mock).mockResolvedValue({
+    ok: false,
+    status: 400,
+    json: () => Promise.resolve({ error: 'invalid data' }),
+  });
+
+  const result = await syncPending();
+
+  expect(FileSystem.deleteAsync).toHaveBeenCalledWith('file:///d.jpg', { idempotent: true });
+  expect(markSynced).toHaveBeenCalledWith('mno');
+  expect(result.failed).toBe(1);
+});
+
 // Issue B: fetch timeout
 test('syncPending leaves observation in queue when fetch times out', async () => {
   jest.useFakeTimers();
