@@ -4,7 +4,8 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function GET() {
   const { data, error } = await supabaseAdmin
     .from('tags')
-    .select('id, name, description')
+    .select('id, name, description, retired')
+    .order('retired', { ascending: true })
     .order('name');
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ tags: data });

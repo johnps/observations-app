@@ -1,5 +1,5 @@
 import * as FileSystem from 'expo-file-system';
-import { getPendingObservations, markSynced } from './db';
+import { getPendingObservations, markSynced, cacheHierarchy } from './db';
 import { uploadPhoto } from './storage';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
@@ -35,4 +35,22 @@ export async function syncPending() {
       // network or upload error — leave in queue for next sync attempt
     }
   }
+}
+
+export async function syncHierarchy(blockLeadEmail: string) {
+  try {
+    const res = await fetch(`${API_BASE}/api/hierarchy/field-workers?block_lead_email=${encodeURIComponent(blockLeadEmail)}`);
+    if (!res.ok) return;
+    const { field_workers } = await res.json();
+    const rows: { field_worker_name: string; village_name: string }[] = [];
+    for (const fw of field_workers ?? []) {
+      const vRes = await fetch(`${API_BASE}/api/hierarchy/villages?block_lead_email=${encodeURIComponent(blockLeadEmail)}&field_worker_name=${encodeURIComponent(fw.field_worker_name)}`);
+      if (!vRes.ok) continue;
+      const { villages } = await vRes.json();
+      for (const v of villages ?? []) {
+        rows.push({ field_worker_name: fw.field_worker_name, village_name: v.village_name });
+      }
+    }
+    cacheHierarchy(blockLeadEmail, rows);
+  } catch { /* leave stale cache */ }
 }

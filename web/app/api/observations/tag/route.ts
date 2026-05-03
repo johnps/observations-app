@@ -8,7 +8,8 @@ const BATCH_SIZE = 200;
 export async function POST() {
   const { data: tagDefs, error: tagErr } = await supabaseAdmin
     .from('tags')
-    .select('name, description');
+    .select('name, description')
+    .eq('retired', false);
 
   if (tagErr) return NextResponse.json({ error: tagErr.message }, { status: 500 });
   if (!tagDefs?.length) return NextResponse.json({ tagged: 0, total: 0 });

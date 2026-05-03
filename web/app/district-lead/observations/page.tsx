@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { SignOutButton } from '@/components/SignOutButton';
 
@@ -11,6 +12,8 @@ type Observation = {
   village_name: string;
   block_lead_email: string;
   gps_captured: boolean;
+  gps_lat: number | null;
+  gps_lng: number | null;
   submitted_at: string;
 };
 
@@ -33,26 +36,39 @@ const PERIOD_LABELS: Record<Period, string> = {
   last_6_months: 'Last 6 Months',
 };
 
-export default function DistrictLeadObservations() {
+function DistrictLeadObservationsInner() {
+  const searchParams = useSearchParams();
+  const districtFilter = searchParams.get('district');
+
   const [observations, setObservations] = useState<Observation[]>([]);
   const [stats, setStats] = useState<Stat[]>([]);
   const [dimension, setDimension] = useState<Dimension>('block_lead');
   const [period, setPeriod] = useState<Period>('this_month');
+  const [selectedObs, setSelectedObs] = useState<Observation | null>(null);
 
   useEffect(() => {
-    fetch('/api/observations')
+    fetch(districtFilter ? `/api/observations?district=${encodeURIComponent(districtFilter)}` : '/api/observations')
       .then(r => r.json())
       .then(b => setObservations(b.observations ?? []));
-  }, []);
+  }, [districtFilter]);
 
   useEffect(() => {
-    fetch(`/api/observations/stats?dimension=${dimension}&period=${period}`)
+    const base = `/api/observations/stats?dimension=${dimension}&period=${period}`;
+    const url = districtFilter ? `${base}&district=${encodeURIComponent(districtFilter)}` : base;
+    fetch(url)
       .then(r => r.json())
       .then(b => setStats(b.stats ?? []));
-  }, [dimension, period]);
+  }, [dimension, period, districtFilter]);
 
   return (
     <main className="p-8 max-w-6xl">
+      {districtFilter && (
+        <p className="text-sm text-gray-500 mb-2">
+          <a href="/state-lead" className="text-gray-400 hover:text-gray-700">← State Overview</a>
+          {' / '}{districtFilter}
+        </p>
+      )}
+
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold text-gray-800">Observations</h1>
         <SignOutButton />
@@ -116,16 +132,40 @@ export default function DistrictLeadObservations() {
         </thead>
         <tbody>
           {observations.map(obs => (
-            <tr key={obs.id} className="border-b border-gray-100">
-              <td className="py-3">{obs.gps_captured ? '✅' : '🚩'}</td>
-              <td className="py-3 text-gray-700">{obs.field_worker_name}</td>
-              <td className="py-3 text-gray-700">{obs.village_name}</td>
-              <td className="py-3 text-gray-500 text-xs">{obs.block_lead_email}</td>
-              <td className="py-3 text-gray-600 max-w-xs truncate">{obs.text}</td>
-              <td className="py-3 text-gray-400 text-xs">
-                {new Date(obs.submitted_at).toLocaleDateString('en-IN')}
-              </td>
-            </tr>
+            <>
+              <tr
+                key={obs.id}
+                className="border-b border-gray-100 cursor-pointer hover:bg-gray-50"
+                onClick={() => setSelectedObs(obs === selectedObs ? null : obs)}
+              >
+                <td className="py-3">{obs.gps_captured ? '✅' : '🚩'}</td>
+                <td className="py-3 text-gray-700">{obs.field_worker_name}</td>
+                <td className="py-3 text-gray-700">{obs.village_name}</td>
+                <td className="py-3 text-gray-500 text-xs">{obs.block_lead_email}</td>
+                <td className="py-3 text-gray-600 max-w-xs truncate">{obs.text}</td>
+                <td className="py-3 text-gray-400 text-xs">
+                  {new Date(obs.submitted_at).toLocaleDateString('en-IN')}
+                </td>
+              </tr>
+              {selectedObs?.id === obs.id && (
+                <tr key={obs.id + '-detail'} className="bg-gray-50">
+                  <td colSpan={6} className="px-3 py-3 text-sm text-gray-600">
+                    <div className="flex gap-8">
+                      <div>
+                        <span className="font-medium text-gray-700">Full text: </span>
+                        {obs.text}
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-700">GPS: </span>
+                        {obs.gps_lat && obs.gps_lng
+                          ? `${obs.gps_lat.toFixed(5)}, ${obs.gps_lng.toFixed(5)}`
+                          : 'Not captured'}
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </>
           ))}
           {observations.length === 0 && (
             <tr>
@@ -135,5 +175,13 @@ export default function DistrictLeadObservations() {
         </tbody>
       </table>
     </main>
+  );
+}
+
+export default function DistrictLeadObservations() {
+  return (
+    <Suspense>
+      <DistrictLeadObservationsInner />
+    </Suspense>
   );
 }

@@ -34,13 +34,25 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   const block_lead_email = req.nextUrl.searchParams.get('block_lead_email');
+  const district = req.nextUrl.searchParams.get('district');
+
+  let blockLeadEmails: string[] | null = null;
+  if (district) {
+    const { data: hier } = await supabaseAdmin
+      .from('hierarchy')
+      .select('block_lead_email')
+      .eq('district_name', district)
+      .eq('status', 'active');
+    blockLeadEmails = [...new Set((hier ?? []).map((h: any) => h.block_lead_email))];
+  }
 
   let query = supabaseAdmin
     .from('observations')
-    .select('id, text, field_worker_name, village_name, block_lead_email, gps_captured, submitted_at')
+    .select('id, text, field_worker_name, village_name, block_lead_email, gps_captured, gps_lat, gps_lng, submitted_at')
     .order('submitted_at', { ascending: false });
 
   if (block_lead_email) query = query.eq('block_lead_email', block_lead_email);
+  if (blockLeadEmails) query = query.in('block_lead_email', blockLeadEmails.length ? blockLeadEmails : ['__none__']);
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

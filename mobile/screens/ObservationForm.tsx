@@ -7,7 +7,7 @@ import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
-import { queueObservation } from '../lib/db';
+import { queueObservation, getCachedFieldWorkers, getCachedVillages } from '../lib/db';
 import { syncPending } from '../lib/sync';
 
 const FIELD_WORKERS_URL = `${process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000'}/api/hierarchy/field-workers`;
@@ -31,16 +31,26 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
   }, []);
 
   useEffect(() => {
-    fetch(`${FIELD_WORKERS_URL}?block_lead_email=${encodeURIComponent(blockLeadEmail)}`)
-      .then(r => r.json())
-      .then(b => setFieldWorkers((b.field_workers ?? []).map((w: { field_worker_name: string }) => w.field_worker_name)));
+    const cached = getCachedFieldWorkers(blockLeadEmail);
+    if (cached.length > 0) {
+      setFieldWorkers(cached);
+    } else {
+      fetch(`${FIELD_WORKERS_URL}?block_lead_email=${encodeURIComponent(blockLeadEmail)}`)
+        .then(r => r.json())
+        .then(b => setFieldWorkers((b.field_workers ?? []).map((w: { field_worker_name: string }) => w.field_worker_name)));
+    }
   }, [blockLeadEmail]);
 
   useEffect(() => {
     if (!selectedWorker) { setVillages([]); return; }
-    fetch(`${VILLAGES_URL}?block_lead_email=${encodeURIComponent(blockLeadEmail)}&field_worker_name=${encodeURIComponent(selectedWorker)}`)
-      .then(r => r.json())
-      .then(b => setVillages((b.villages ?? []).map((v: { village_name: string }) => v.village_name)));
+    const cached = getCachedVillages(blockLeadEmail, selectedWorker);
+    if (cached.length > 0) {
+      setVillages(cached);
+    } else {
+      fetch(`${VILLAGES_URL}?block_lead_email=${encodeURIComponent(blockLeadEmail)}&field_worker_name=${encodeURIComponent(selectedWorker)}`)
+        .then(r => r.json())
+        .then(b => setVillages((b.villages ?? []).map((v: { village_name: string }) => v.village_name)));
+    }
   }, [selectedWorker, blockLeadEmail]);
 
   async function addPhoto(uri: string, width: number) {

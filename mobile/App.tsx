@@ -4,7 +4,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator, NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { initDB } from './lib/db';
-import { syncPending } from './lib/sync';
+import { syncPending, syncHierarchy } from './lib/sync';
 import { supabase } from './lib/supabase';
 import LoginScreen from './screens/LoginScreen';
 import ObservationForm from './screens/ObservationForm';
@@ -51,18 +51,31 @@ export default function App() {
     initDB();
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user?.email) {
-        setInitialEmail(session.user.email);
+        const email = session.user.email;
+        setInitialEmail(email);
         setInitialRoute('BlockLeadHome');
+        syncPending();
+        syncHierarchy(email);
       } else {
         setInitialRoute('Login');
       }
     });
 
     const appSub = AppState.addEventListener('change', state => {
-      if (state === 'active') syncPending();
+      if (state === 'active') {
+        syncPending();
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (session?.user?.email) syncHierarchy(session.user.email);
+        });
+      }
     });
     const netSub = NetInfo.addEventListener(netState => {
-      if (netState.isConnected) syncPending();
+      if (netState.isConnected) {
+        syncPending();
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          if (session?.user?.email) syncHierarchy(session.user.email);
+        });
+      }
     });
     return () => { appSub.remove(); netSub(); };
   }, []);
