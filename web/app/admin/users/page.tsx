@@ -14,6 +14,8 @@ type User = {
   block_name: string | null;
 };
 
+type GeoOption = { value: string; label: string };
+
 const ROLE_LABELS: Record<Role, string> = {
   admin: 'Admin',
   district_lead: 'District Lead',
@@ -27,10 +29,16 @@ const GEOGRAPHY_FIELD: Partial<Record<Role, string>> = {
   state_lead: 'state_name',
 };
 
+const GEOGRAPHY_TYPE: Partial<Record<Role, 'block' | 'district' | 'state'>> = {
+  block_lead: 'block',
+  district_lead: 'district',
+  state_lead: 'state',
+};
+
 const GEOGRAPHY_LABEL: Partial<Record<Role, string>> = {
-  district_lead: 'District Name',
-  block_lead: 'Block Name',
-  state_lead: 'State Name',
+  district_lead: 'District',
+  block_lead: 'Block',
+  state_lead: 'State',
 };
 
 export default function AdminUsersPage() {
@@ -39,6 +47,8 @@ export default function AdminUsersPage() {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<Role>('admin');
   const [geography, setGeography] = useState('');
+  const [geoOptions, setGeoOptions] = useState<GeoOption[]>([]);
+  const [geoLoading, setGeoLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -49,6 +59,16 @@ export default function AdminUsersPage() {
   }
 
   useEffect(() => { loadUsers(); }, []);
+
+  useEffect(() => {
+    const type = GEOGRAPHY_TYPE[role];
+    if (!type) { setGeoOptions([]); return; }
+    setGeoLoading(true);
+    setGeography('');
+    fetch(`/api/hierarchy/geographies?type=${type}`)
+      .then(r => r.json())
+      .then(b => { setGeoOptions(b.options ?? []); setGeoLoading(false); });
+  }, [role]);
 
   async function handleSave() {
     setSaving(true);
@@ -117,7 +137,7 @@ export default function AdminUsersPage() {
             <select
               id="role"
               value={role}
-              onChange={e => { setRole(e.target.value as Role); setGeography(''); }}
+              onChange={e => setRole(e.target.value as Role)}
               className="border border-gray-300 rounded px-3 py-2 text-sm"
             >
               {(Object.entries(ROLE_LABELS) as [Role, string][]).map(([value, label]) => (
@@ -128,13 +148,23 @@ export default function AdminUsersPage() {
           {geoLabel && (
             <div className="flex flex-col gap-1">
               <label htmlFor="geography" className="text-sm font-medium text-gray-700">{geoLabel}</label>
-              <input
-                id="geography"
-                type="text"
-                value={geography}
-                onChange={e => setGeography(e.target.value)}
-                className="border border-gray-300 rounded px-3 py-2 text-sm"
-              />
+              {geoLoading ? (
+                <p className="text-sm text-gray-400">Loading…</p>
+              ) : geoOptions.length === 0 ? (
+                <p className="text-sm text-amber-600">No hierarchy data uploaded yet. Upload a CSV first.</p>
+              ) : (
+                <select
+                  id="geography"
+                  value={geography}
+                  onChange={e => setGeography(e.target.value)}
+                  className="border border-gray-300 rounded px-3 py-2 text-sm"
+                >
+                  <option value="">— select —</option>
+                  {geoOptions.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              )}
             </div>
           )}
           {error && <p className="text-red-600 text-sm">{error}</p>}

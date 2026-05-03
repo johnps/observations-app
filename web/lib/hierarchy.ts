@@ -1,5 +1,51 @@
 import { supabaseAdmin } from './supabase-admin';
 
+export type GeoOption = { value: string; label: string };
+
+export async function getGeographies(type: 'block' | 'district' | 'state'): Promise<GeoOption[]> {
+  if (type === 'block') {
+    const { data } = await supabaseAdmin
+      .from('hierarchy')
+      .select('block_name, district_name, state_name')
+      .eq('status', 'active');
+    const seen = new Set<string>();
+    return (data ?? []).reduce<GeoOption[]>((acc, r) => {
+      if (!seen.has(r.block_name + '|' + r.district_name)) {
+        seen.add(r.block_name + '|' + r.district_name);
+        acc.push({ value: r.block_name, label: `${r.block_name} (${r.district_name}, ${r.state_name})` });
+      }
+      return acc;
+    }, []);
+  }
+  if (type === 'district') {
+    const { data } = await supabaseAdmin
+      .from('hierarchy')
+      .select('district_name, state_name')
+      .eq('status', 'active');
+    const seen = new Set<string>();
+    return (data ?? []).reduce<GeoOption[]>((acc, r) => {
+      if (!seen.has(r.district_name + '|' + r.state_name)) {
+        seen.add(r.district_name + '|' + r.state_name);
+        acc.push({ value: r.district_name, label: `${r.district_name} (${r.state_name})` });
+      }
+      return acc;
+    }, []);
+  }
+  // state
+  const { data } = await supabaseAdmin
+    .from('hierarchy')
+    .select('state_name')
+    .eq('status', 'active');
+  const seen = new Set<string>();
+  return (data ?? []).reduce<GeoOption[]>((acc, r) => {
+    if (!seen.has(r.state_name)) {
+      seen.add(r.state_name);
+      acc.push({ value: r.state_name, label: r.state_name });
+    }
+    return acc;
+  }, []);
+}
+
 export async function getFieldWorkers(blockLeadEmail: string) {
   const { data } = await supabaseAdmin
     .from('hierarchy')
