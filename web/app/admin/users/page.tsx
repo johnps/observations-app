@@ -41,6 +41,49 @@ const GEOGRAPHY_LABEL: Partial<Record<Role, string>> = {
   state_lead: 'State',
 };
 
+function currentGeo(user: User): string {
+  return user.district_name ?? user.block_name ?? user.state_name ?? '—';
+}
+
+function GeoSelect({
+  role,
+  value,
+  onChange,
+}: {
+  role: Role;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [options, setOptions] = useState<GeoOption[]>([]);
+  const [loading, setLoading] = useState(false);
+  const type = GEOGRAPHY_TYPE[role];
+
+  useEffect(() => {
+    if (!type) { setOptions([]); return; }
+    setLoading(true);
+    fetch(`/api/hierarchy/geographies?type=${type}`)
+      .then(r => r.json())
+      .then(b => { setOptions(b.options ?? []); setLoading(false); });
+  }, [type]);
+
+  if (!type) return null;
+  if (loading) return <span className="text-xs text-gray-400">Loading…</span>;
+  if (options.length === 0) return <span className="text-xs text-amber-600">No hierarchy data yet</span>;
+
+  return (
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      className="border border-gray-300 rounded px-2 py-1 text-xs"
+    >
+      <option value="">— select —</option>
+      {options.map(opt => (
+        <option key={opt.value} value={opt.value}>{opt.label}</option>
+      ))}
+    </select>
+  );
+}
+
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -51,6 +94,12 @@ export default function AdminUsersPage() {
   const [geoLoading, setGeoLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editRole, setEditRole] = useState<Role>('admin');
+  const [editGeo, setEditGeo] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState('');
 
   async function loadUsers() {
     const res = await fetch('/api/users');
@@ -95,6 +144,44 @@ export default function AdminUsersPage() {
     setRole('admin');
     setGeography('');
     setSaving(false);
+    loadUsers();
+  }
+
+  function startEdit(user: User) {
+    setEditingId(user.id);
+    setEditRole(user.role);
+    setEditGeo(user.district_name ?? user.block_name ?? user.state_name ?? '');
+    setEditError('');
+  }
+
+  async function handleEditSave(user: User) {
+    setEditSaving(true);
+    setEditError('');
+    const geoField = GEOGRAPHY_FIELD[editRole];
+    const payload: Record<string, string | null> = {
+      email: user.email,
+      role: editRole,
+      state_name: null,
+      district_name: null,
+      block_name: null,
+    };
+    if (geoField) payload[geoField] = editGeo;
+
+    const res = await fetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const body = await res.json();
+      setEditError(body.error ?? 'Failed to update user');
+      setEditSaving(false);
+      return;
+    }
+
+    setEditingId(null);
+    setEditSaving(false);
     loadUsers();
   }
 
@@ -199,17 +286,62 @@ export default function AdminUsersPage() {
           {users.map(user => (
             <tr key={user.id} className="border-b border-gray-100">
               <td className="py-3 text-gray-800">{user.email}</td>
-              <td className="py-3 text-gray-600">{ROLE_LABELS[user.role]}</td>
               <td className="py-3 text-gray-600">
-                {user.district_name ?? user.block_name ?? user.state_name ?? '—'}
+                {editingId === user.id ? (
+                  <select
+                    value={editRole}
+                    onChange={e => { setEditRole(e.target.value as Role); setEditGeo(''); }}
+                    className="border border-gray-300 rounded px-2 py-1 text-xs"
+                  >
+                    {(Object.entries(ROLE_LABELS) as [Role, string][]).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                ) : (
+                  ROLE_LABELS[user.role]
+                )}
+              </td>
+              <td className="py-3 text-gray-600">
+                {editingId === user.id ? (
+                  <GeoSelect role={editRole} value={editGeo} onChange={setEditGeo} />
+                ) : (
+                  currentGeo(user)
+                )}
               </td>
               <td className="py-3 text-right">
-                <button
-                  onClick={() => handleRevoke(user.id)}
-                  className="px-3 py-1 text-red-600 border border-red-200 rounded text-xs hover:bg-red-50"
-                >
-                  Revoke
-                </button>
+                {editingId === user.id ? (
+                  <span className="flex justify-end items-center gap-2">
+                    {editError && <span className="text-red-600 text-xs">{editError}</span>}
+                    <button
+                      onClick={() => handleEditSave(user)}
+                      disabled={editSaving}
+                      className="text-green-700 hover:text-green-900 text-xs border border-green-200 rounded px-2 py-1 disabled:opacity-50"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => setEditingId(null)}
+                      className="text-gray-400 hover:text-gray-600 text-xs"
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <span className="flex justify-end items-center gap-3">
+                    <button
+                      onClick={() => startEdit(user)}
+                      className="text-gray-500 hover:text-gray-700 text-xs"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleRevoke(user.id)}
+                      className="px-3 py-1 text-red-600 border border-red-200 rounded text-xs hover:bg-red-50"
+                    >
+                      Revoke
+                    </button>
+                  </span>
+                )}
               </td>
             </tr>
           ))}

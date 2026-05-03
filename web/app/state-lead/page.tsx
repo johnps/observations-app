@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { SignOutButton } from '@/components/SignOutButton';
@@ -8,6 +8,21 @@ import { SignOutButton } from '@/components/SignOutButton';
 type Stat = { name: string; count: number };
 type Period = 'this_month' | 'last_month' | 'last_3_months' | 'last_6_months';
 type Dimension = 'district' | 'block_lead' | 'field_worker' | 'village' | 'tag';
+
+type Observation = {
+  id: string;
+  text: string;
+  field_worker_name: string;
+  village_name: string;
+  block_lead_email: string;
+  gps_captured: boolean;
+  gps_lat: number | null;
+  gps_lng: number | null;
+  tags: string[];
+  submitted_at: string;
+  district_name?: string;
+  block_name?: string;
+};
 
 const PERIOD_LABELS: Record<Period, string> = {
   this_month: 'This Month', last_month: 'Last Month',
@@ -19,11 +34,43 @@ const DIMENSION_LABELS: Record<Dimension, string> = {
   field_worker: 'Field Worker', village: 'Village', tag: 'Tag',
 };
 
+function uniq(arr: string[]) {
+  return Array.from(new Set(arr)).sort();
+}
+
+function FilterSelect({
+  label, value, options, onChange,
+}: { label: string; value: string; options: string[]; onChange: (v: string) => void }) {
+  return (
+    <label className="text-xs font-medium text-gray-500 flex flex-col gap-1">
+      {label}
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-700 font-normal"
+      >
+        <option value="">All</option>
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </label>
+  );
+}
+
 export default function StateLeadDashboard() {
   const router = useRouter();
   const [stats, setStats] = useState<Stat[]>([]);
   const [period, setPeriod] = useState<Period>('this_month');
   const [dimension, setDimension] = useState<Dimension>('district');
+  const [observations, setObservations] = useState<Observation[]>([]);
+  const [selectedObs, setSelectedObs] = useState<Observation | null>(null);
+
+  const [fDistrict, setFDistrict] = useState('');
+  const [fBlock, setFBlock] = useState('');
+  const [fBlockLead, setFBlockLead] = useState('');
+  const [fFieldWorker, setFFieldWorker] = useState('');
+  const [fVillage, setFVillage] = useState('');
+  const [fTag, setFTag] = useState('');
+  const [fGps, setFGps] = useState('');
 
   useEffect(() => {
     fetch(`/api/observations/stats?dimension=${dimension}&period=${period}`)
@@ -31,14 +78,53 @@ export default function StateLeadDashboard() {
       .then(b => setStats(b.stats ?? []));
   }, [period, dimension]);
 
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/observations').then(r => r.json()),
+      fetch('/api/hierarchy/email-map').then(r => r.json()),
+    ]).then(([obsBody, hierBody]) => {
+      const emailMap: Record<string, { district_name: string; block_name: string }> = hierBody.map ?? {};
+      const enriched = (obsBody.observations ?? []).map((o: Observation) => ({
+        ...o,
+        tags: o.tags ?? [],
+        district_name: emailMap[o.block_lead_email]?.district_name ?? '—',
+        block_name: emailMap[o.block_lead_email]?.block_name ?? '—',
+      }));
+      setObservations(enriched);
+    });
+  }, []);
+
   function handleBarClick(e: any) {
     if (dimension === 'district' && e?.activePayload?.[0]?.payload?.name) {
       router.push(`/state-lead/district/${encodeURIComponent(e.activePayload[0].payload.name)}`);
     }
   }
 
+  const filtered = useMemo(() => observations.filter(o => {
+    if (fDistrict && o.district_name !== fDistrict) return false;
+    if (fBlock && o.block_name !== fBlock) return false;
+    if (fBlockLead && o.block_lead_email !== fBlockLead) return false;
+    if (fFieldWorker && o.field_worker_name !== fFieldWorker) return false;
+    if (fVillage && o.village_name !== fVillage) return false;
+    if (fTag && !(o.tags ?? []).includes(fTag)) return false;
+    if (fGps === 'captured' && !o.gps_captured) return false;
+    if (fGps === 'missing' && o.gps_captured) return false;
+    return true;
+  }), [observations, fDistrict, fBlock, fBlockLead, fFieldWorker, fVillage, fTag, fGps]);
+
+  const opts = useMemo(() => ({
+    districts: uniq(observations.map(o => o.district_name ?? '').filter(Boolean)),
+    blocks: uniq(observations.map(o => o.block_name ?? '').filter(Boolean)),
+    blockLeads: uniq(observations.map(o => o.block_lead_email)),
+    fieldWorkers: uniq(observations.map(o => o.field_worker_name)),
+    villages: uniq(observations.map(o => o.village_name)),
+    tags: uniq(observations.flatMap(o => o.tags ?? [])),
+  }), [observations]);
+
+  const hasFilters = fDistrict || fBlock || fBlockLead || fFieldWorker || fVillage || fTag || fGps;
+
   return (
-    <main className="p-8 max-w-5xl">
+    <main className="p-8 max-w-6xl">
       <div className="flex items-center gap-4 mb-6">
         <h1 className="text-2xl font-semibold text-gray-800 flex-1">State Overview</h1>
         <label className="text-sm font-medium text-gray-600">
@@ -66,7 +152,7 @@ export default function StateLeadDashboard() {
         <p className="text-sm text-gray-400 mb-4">Click a district bar to see full district view</p>
       )}
 
-      <div data-testid="state-chart" className="h-64">
+      <div data-testid="state-chart" className="h-64 mb-10">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={stats} margin={{ top: 4, right: 8, left: 0, bottom: 48 }} onClick={handleBarClick}>
             <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-30} textAnchor="end" interval={0} />
@@ -82,9 +168,106 @@ export default function StateLeadDashboard() {
         </ResponsiveContainer>
       </div>
 
-      {stats.length === 0 && (
-        <p className="text-center text-gray-400 text-sm mt-8">No data for this period</p>
-      )}
+      {/* Table filters */}
+      <div className="mb-3 flex flex-wrap gap-3 items-end">
+        <FilterSelect label="District" value={fDistrict} options={opts.districts} onChange={setFDistrict} />
+        <FilterSelect label="Block" value={fBlock} options={opts.blocks} onChange={setFBlock} />
+        <FilterSelect label="Block Lead" value={fBlockLead} options={opts.blockLeads} onChange={setFBlockLead} />
+        <FilterSelect label="Field Worker" value={fFieldWorker} options={opts.fieldWorkers} onChange={setFFieldWorker} />
+        <FilterSelect label="Village" value={fVillage} options={opts.villages} onChange={setFVillage} />
+        <FilterSelect label="Tag" value={fTag} options={opts.tags} onChange={setFTag} />
+        <label className="text-xs font-medium text-gray-500 flex flex-col gap-1">
+          GPS
+          <select
+            value={fGps}
+            onChange={e => setFGps(e.target.value)}
+            className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-700 font-normal"
+          >
+            <option value="">All</option>
+            <option value="captured">✅ Captured</option>
+            <option value="missing">🚩 Missing</option>
+          </select>
+        </label>
+        {hasFilters && (
+          <button
+            onClick={() => { setFDistrict(''); setFBlock(''); setFBlockLead(''); setFFieldWorker(''); setFVillage(''); setFTag(''); setFGps(''); }}
+            className="text-xs text-gray-400 hover:text-gray-600 mb-0.5"
+          >
+            Clear filters
+          </button>
+        )}
+        <span className="text-xs text-gray-400 mb-0.5 ml-auto">{filtered.length} of {observations.length}</span>
+      </div>
+
+      <table className="w-full text-sm border-collapse">
+        <thead>
+          <tr className="border-b border-gray-200 text-left text-gray-500">
+            <th className="pb-2 font-medium">GPS</th>
+            <th className="pb-2 font-medium">District</th>
+            <th className="pb-2 font-medium">Block</th>
+            <th className="pb-2 font-medium">Block Lead</th>
+            <th className="pb-2 font-medium">Field Worker</th>
+            <th className="pb-2 font-medium">Village</th>
+            <th className="pb-2 font-medium">Tags</th>
+            <th className="pb-2 font-medium">Observation</th>
+            <th className="pb-2 font-medium">Submitted</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filtered.map(obs => (
+            <>
+              <tr
+                key={obs.id}
+                className="border-b border-gray-100 cursor-pointer hover:bg-gray-50"
+                onClick={() => setSelectedObs(obs === selectedObs ? null : obs)}
+              >
+                <td className="py-3">{obs.gps_captured ? '✅' : '🚩'}</td>
+                <td className="py-3 text-gray-700 text-xs">{obs.district_name}</td>
+                <td className="py-3 text-gray-700 text-xs">{obs.block_name}</td>
+                <td className="py-3 text-gray-500 text-xs">{obs.block_lead_email}</td>
+                <td className="py-3 text-gray-700">{obs.field_worker_name}</td>
+                <td className="py-3 text-gray-700">{obs.village_name}</td>
+                <td className="py-3">
+                  <div className="flex flex-wrap gap-1">
+                    {(obs.tags ?? []).map(tag => (
+                      <span key={tag} className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">{tag}</span>
+                    ))}
+                  </div>
+                </td>
+                <td className="py-3 text-gray-600 max-w-xs truncate">{obs.text}</td>
+                <td className="py-3 text-gray-400 text-xs whitespace-nowrap">
+                  {new Date(obs.submitted_at).toLocaleDateString('en-IN')}
+                </td>
+              </tr>
+              {selectedObs?.id === obs.id && (
+                <tr key={obs.id + '-detail'} className="bg-gray-50">
+                  <td colSpan={9} className="px-3 py-3 text-sm text-gray-600">
+                    <div className="flex gap-8">
+                      <div className="flex-1">
+                        <span className="font-medium text-gray-700">Full text: </span>
+                        {obs.text}
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-700">GPS: </span>
+                        {obs.gps_lat && obs.gps_lng
+                          ? `${obs.gps_lat.toFixed(5)}, ${obs.gps_lng.toFixed(5)}`
+                          : 'Not captured'}
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </>
+          ))}
+          {filtered.length === 0 && (
+            <tr>
+              <td colSpan={9} className="py-8 text-center text-gray-400">
+                {observations.length === 0 ? 'No observations yet' : 'No observations match the current filters'}
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
     </main>
   );
 }

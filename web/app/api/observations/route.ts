@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
 
   let query = supabaseAdmin
     .from('observations')
-    .select('id, text, field_worker_name, village_name, block_lead_email, gps_captured, gps_lat, gps_lng, submitted_at')
+    .select('id, text, field_worker_name, village_name, block_lead_email, gps_captured, gps_lat, gps_lng, tags, submitted_at')
     .order('submitted_at', { ascending: false });
 
   if (block_lead_email) query = query.eq('block_lead_email', block_lead_email);

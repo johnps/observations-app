@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { SignOutButton } from '@/components/SignOutButton';
@@ -14,11 +14,13 @@ type Observation = {
   gps_captured: boolean;
   gps_lat: number | null;
   gps_lng: number | null;
+  tags: string[];
   submitted_at: string;
+  district_name?: string;
+  block_name?: string;
 };
 
 type Stat = { name: string; count: number };
-
 type Dimension = 'block_lead' | 'field_worker' | 'village' | 'tag';
 type Period = 'this_month' | 'last_month' | 'last_3_months' | 'last_6_months';
 
@@ -36,6 +38,28 @@ const PERIOD_LABELS: Record<Period, string> = {
   last_6_months: 'Last 6 Months',
 };
 
+function uniq(arr: string[]) {
+  return Array.from(new Set(arr)).sort();
+}
+
+function FilterSelect({
+  label, value, options, onChange,
+}: { label: string; value: string; options: string[]; onChange: (v: string) => void }) {
+  return (
+    <label className="text-xs font-medium text-gray-500 flex flex-col gap-1">
+      {label}
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-700 font-normal"
+      >
+        <option value="">All</option>
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </label>
+  );
+}
+
 function DistrictLeadObservationsInner() {
   const searchParams = useSearchParams();
   const districtFilter = searchParams.get('district');
@@ -46,19 +70,62 @@ function DistrictLeadObservationsInner() {
   const [period, setPeriod] = useState<Period>('this_month');
   const [selectedObs, setSelectedObs] = useState<Observation | null>(null);
 
+  const [fDistrict, setFDistrict] = useState('');
+  const [fBlock, setFBlock] = useState('');
+  const [fBlockLead, setFBlockLead] = useState('');
+  const [fFieldWorker, setFFieldWorker] = useState('');
+  const [fVillage, setFVillage] = useState('');
+  const [fTag, setFTag] = useState('');
+  const [fGps, setFGps] = useState('');
+
   useEffect(() => {
-    fetch(districtFilter ? `/api/observations?district=${encodeURIComponent(districtFilter)}` : '/api/observations')
-      .then(r => r.json())
-      .then(b => setObservations(b.observations ?? []));
+    const url = districtFilter
+      ? `/api/observations?district=${encodeURIComponent(districtFilter)}`
+      : '/api/observations';
+
+    Promise.all([
+      fetch(url).then(r => r.json()),
+      fetch('/api/hierarchy/email-map').then(r => r.json()),
+    ]).then(([obsBody, hierBody]) => {
+      const emailMap: Record<string, { district_name: string; block_name: string }> = hierBody.map ?? {};
+      const enriched = (obsBody.observations ?? []).map((o: Observation) => ({
+        ...o,
+        tags: o.tags ?? [],
+        district_name: emailMap[o.block_lead_email]?.district_name ?? '—',
+        block_name: emailMap[o.block_lead_email]?.block_name ?? '—',
+      }));
+      setObservations(enriched);
+    });
   }, [districtFilter]);
 
   useEffect(() => {
     const base = `/api/observations/stats?dimension=${dimension}&period=${period}`;
     const url = districtFilter ? `${base}&district=${encodeURIComponent(districtFilter)}` : base;
-    fetch(url)
-      .then(r => r.json())
-      .then(b => setStats(b.stats ?? []));
+    fetch(url).then(r => r.json()).then(b => setStats(b.stats ?? []));
   }, [dimension, period, districtFilter]);
+
+  const filtered = useMemo(() => observations.filter(o => {
+    if (fDistrict && o.district_name !== fDistrict) return false;
+    if (fBlock && o.block_name !== fBlock) return false;
+    if (fBlockLead && o.block_lead_email !== fBlockLead) return false;
+    if (fFieldWorker && o.field_worker_name !== fFieldWorker) return false;
+    if (fVillage && o.village_name !== fVillage) return false;
+    if (fTag && !(o.tags ?? []).includes(fTag)) return false;
+    if (fGps === 'captured' && !o.gps_captured) return false;
+    if (fGps === 'missing' && o.gps_captured) return false;
+    return true;
+  }), [observations, fDistrict, fBlock, fBlockLead, fFieldWorker, fVillage, fTag, fGps]);
+
+  const opts = useMemo(() => ({
+    districts: uniq(observations.map(o => o.district_name ?? '').filter(Boolean)),
+    blocks: uniq(observations.map(o => o.block_name ?? '').filter(Boolean)),
+    blockLeads: uniq(observations.map(o => o.block_lead_email)),
+    fieldWorkers: uniq(observations.map(o => o.field_worker_name)),
+    villages: uniq(observations.map(o => o.village_name)),
+    tags: uniq(observations.flatMap(o => o.tags ?? [])),
+  }), [observations]);
+
+  const hasFilters = fDistrict || fBlock || fBlockLead || fFieldWorker || fVillage || fTag || fGps;
 
   return (
     <main className="p-8 max-w-6xl">
@@ -74,11 +141,11 @@ function DistrictLeadObservationsInner() {
         <SignOutButton />
       </div>
 
-      <div className="mb-6 flex gap-4 items-center">
+      {/* Chart controls */}
+      <div className="mb-4 flex gap-4 items-center">
         <label className="text-sm font-medium text-gray-600">
           Dimension
           <select
-            aria-label="Dimension"
             className="ml-2 border border-gray-200 rounded px-2 py-1 text-sm text-gray-700"
             value={dimension}
             onChange={e => setDimension(e.target.value as Dimension)}
@@ -88,11 +155,9 @@ function DistrictLeadObservationsInner() {
             ))}
           </select>
         </label>
-
         <label className="text-sm font-medium text-gray-600">
           Period
           <select
-            aria-label="Period"
             className="ml-2 border border-gray-200 rounded px-2 py-1 text-sm text-gray-700"
             value={period}
             onChange={e => setPeriod(e.target.value as Period)}
@@ -104,7 +169,7 @@ function DistrictLeadObservationsInner() {
         </label>
       </div>
 
-      <div data-testid="frequency-chart" className="mb-8 h-56">
+      <div className="mb-8 h-56">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={stats} margin={{ top: 4, right: 8, left: 0, bottom: 40 }}>
             <XAxis dataKey="name" tick={{ fontSize: 11 }} angle={-30} textAnchor="end" interval={0} />
@@ -119,19 +184,53 @@ function DistrictLeadObservationsInner() {
         </ResponsiveContainer>
       </div>
 
+      {/* Table filters */}
+      <div className="mb-3 flex flex-wrap gap-3 items-end">
+        <FilterSelect label="District" value={fDistrict} options={opts.districts} onChange={setFDistrict} />
+        <FilterSelect label="Block" value={fBlock} options={opts.blocks} onChange={setFBlock} />
+        <FilterSelect label="Block Lead" value={fBlockLead} options={opts.blockLeads} onChange={setFBlockLead} />
+        <FilterSelect label="Field Worker" value={fFieldWorker} options={opts.fieldWorkers} onChange={setFFieldWorker} />
+        <FilterSelect label="Village" value={fVillage} options={opts.villages} onChange={setFVillage} />
+        <FilterSelect label="Tag" value={fTag} options={opts.tags} onChange={setFTag} />
+        <label className="text-xs font-medium text-gray-500 flex flex-col gap-1">
+          GPS
+          <select
+            value={fGps}
+            onChange={e => setFGps(e.target.value)}
+            className="border border-gray-200 rounded px-2 py-1 text-xs text-gray-700 font-normal"
+          >
+            <option value="">All</option>
+            <option value="captured">✅ Captured</option>
+            <option value="missing">🚩 Missing</option>
+          </select>
+        </label>
+        {hasFilters && (
+          <button
+            onClick={() => { setFDistrict(''); setFBlock(''); setFBlockLead(''); setFFieldWorker(''); setFVillage(''); setFTag(''); setFGps(''); }}
+            className="text-xs text-gray-400 hover:text-gray-600 mb-0.5"
+          >
+            Clear filters
+          </button>
+        )}
+        <span className="text-xs text-gray-400 mb-0.5 ml-auto">{filtered.length} of {observations.length}</span>
+      </div>
+
       <table className="w-full text-sm border-collapse">
         <thead>
           <tr className="border-b border-gray-200 text-left text-gray-500">
             <th className="pb-2 font-medium">GPS</th>
+            <th className="pb-2 font-medium">District</th>
+            <th className="pb-2 font-medium">Block</th>
+            <th className="pb-2 font-medium">Block Lead</th>
             <th className="pb-2 font-medium">Field Worker</th>
             <th className="pb-2 font-medium">Village</th>
-            <th className="pb-2 font-medium">Block Lead</th>
+            <th className="pb-2 font-medium">Tags</th>
             <th className="pb-2 font-medium">Observation</th>
             <th className="pb-2 font-medium">Submitted</th>
           </tr>
         </thead>
         <tbody>
-          {observations.map(obs => (
+          {filtered.map(obs => (
             <>
               <tr
                 key={obs.id}
@@ -139,19 +238,28 @@ function DistrictLeadObservationsInner() {
                 onClick={() => setSelectedObs(obs === selectedObs ? null : obs)}
               >
                 <td className="py-3">{obs.gps_captured ? '✅' : '🚩'}</td>
+                <td className="py-3 text-gray-700 text-xs">{obs.district_name}</td>
+                <td className="py-3 text-gray-700 text-xs">{obs.block_name}</td>
+                <td className="py-3 text-gray-500 text-xs">{obs.block_lead_email}</td>
                 <td className="py-3 text-gray-700">{obs.field_worker_name}</td>
                 <td className="py-3 text-gray-700">{obs.village_name}</td>
-                <td className="py-3 text-gray-500 text-xs">{obs.block_lead_email}</td>
+                <td className="py-3">
+                  <div className="flex flex-wrap gap-1">
+                    {(obs.tags ?? []).map(tag => (
+                      <span key={tag} className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">{tag}</span>
+                    ))}
+                  </div>
+                </td>
                 <td className="py-3 text-gray-600 max-w-xs truncate">{obs.text}</td>
-                <td className="py-3 text-gray-400 text-xs">
+                <td className="py-3 text-gray-400 text-xs whitespace-nowrap">
                   {new Date(obs.submitted_at).toLocaleDateString('en-IN')}
                 </td>
               </tr>
               {selectedObs?.id === obs.id && (
                 <tr key={obs.id + '-detail'} className="bg-gray-50">
-                  <td colSpan={6} className="px-3 py-3 text-sm text-gray-600">
+                  <td colSpan={9} className="px-3 py-3 text-sm text-gray-600">
                     <div className="flex gap-8">
-                      <div>
+                      <div className="flex-1">
                         <span className="font-medium text-gray-700">Full text: </span>
                         {obs.text}
                       </div>
@@ -167,9 +275,11 @@ function DistrictLeadObservationsInner() {
               )}
             </>
           ))}
-          {observations.length === 0 && (
+          {filtered.length === 0 && (
             <tr>
-              <td colSpan={6} className="py-8 text-center text-gray-400">No observations yet</td>
+              <td colSpan={9} className="py-8 text-center text-gray-400">
+                {observations.length === 0 ? 'No observations yet' : 'No observations match the current filters'}
+              </td>
             </tr>
           )}
         </tbody>
