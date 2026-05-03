@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
 const ROLE_ROUTES: Record<string, string> = {
-  admin: '/admin/users',
+  admin: '/admin',
   district_lead: '/district-lead/observations',
   block_lead: '/block-lead',
   state_lead: '/state-lead',
