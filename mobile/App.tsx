@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AppState, View, Text, TouchableOpacity } from 'react-native';
+import { AppState, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator, NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -8,18 +8,29 @@ import { syncPending, syncHierarchy } from './lib/sync';
 import { supabase } from './lib/supabase';
 import LoginScreen from './screens/LoginScreen';
 import ObservationForm from './screens/ObservationForm';
+import MyObservations from './screens/MyObservations';
 
 export type RootStackParamList = {
   Login: undefined;
-  BlockLeadHome: { email: string };
+  BlockLeadHome: { email: string; justSubmitted?: boolean; wasSynced?: boolean };
   ObservationForm: { email: string };
+  MyObservations: { email: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-function BlockLeadHomeScreen({ route }: { route: { params: { email: string } } }) {
+function BlockLeadHomeScreen({ route }: { route: { params: { email: string; justSubmitted?: boolean; wasSynced?: boolean } } }) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { email } = route.params;
+  const { email, justSubmitted, wasSynced } = route.params;
+  const [banner, setBanner] = useState('');
+
+  useEffect(() => {
+    if (justSubmitted) {
+      setBanner(wasSynced ? '✓ Observation submitted' : '⏳ Saved offline — will sync when connected');
+      const t = setTimeout(() => setBanner(''), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [justSubmitted, wasSynced]);
 
   async function handleSignOut() {
     await supabase.auth.signOut();
@@ -27,17 +38,34 @@ function BlockLeadHomeScreen({ route }: { route: { params: { email: string } } }
   }
 
   return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24 }}>
-      <Text style={{ fontSize: 22, fontWeight: '600', color: '#1f2937' }}>Livelihood Monitor</Text>
-      <Text style={{ fontSize: 13, color: '#6b7280' }}>{email}</Text>
+    <View style={styles.container}>
+      <Text style={styles.title}>Livelihood Monitor</Text>
+      <Text style={styles.email}>{email}</Text>
+
+      {banner ? (
+        <View style={[styles.banner, wasSynced ? styles.bannerSynced : styles.bannerPending]}>
+          <Text style={[styles.bannerText, wasSynced ? styles.bannerTextSynced : styles.bannerTextPending]}>
+            {banner}
+          </Text>
+        </View>
+      ) : null}
+
       <TouchableOpacity
-        style={{ backgroundColor: '#111827', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8 }}
+        style={styles.primaryButton}
         onPress={() => navigation.navigate('ObservationForm', { email })}
       >
-        <Text style={{ color: '#fff', fontWeight: '600' }}>New Observation</Text>
+        <Text style={styles.primaryButtonText}>New Observation</Text>
       </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.secondaryButton}
+        onPress={() => navigation.navigate('MyObservations', { email })}
+      >
+        <Text style={styles.secondaryButtonText}>My Observations</Text>
+      </TouchableOpacity>
+
       <TouchableOpacity onPress={handleSignOut}>
-        <Text style={{ color: '#9ca3af', fontSize: 13 }}>Sign out</Text>
+        <Text style={styles.signOut}>Sign out</Text>
       </TouchableOpacity>
     </View>
   );
@@ -84,10 +112,7 @@ export default function App() {
 
   return (
     <NavigationContainer>
-      <Stack.Navigator
-        initialRouteName={initialRoute}
-        screenOptions={{ headerShown: false }}
-      >
+      <Stack.Navigator initialRouteName={initialRoute} screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen
           name="BlockLeadHome"
@@ -97,7 +122,27 @@ export default function App() {
         <Stack.Screen name="ObservationForm" options={{ headerShown: true, title: 'New Observation' }}>
           {({ route }) => <ObservationForm blockLeadEmail={(route.params as any).email} />}
         </Stack.Screen>
+        <Stack.Screen name="MyObservations" options={{ headerShown: true, title: 'My Observations' }}>
+          {({ route }) => <MyObservations blockLeadEmail={(route.params as any).email} />}
+        </Stack.Screen>
       </Stack.Navigator>
     </NavigationContainer>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
+  title: { fontSize: 22, fontWeight: '600', color: '#1f2937' },
+  email: { fontSize: 13, color: '#6b7280', marginBottom: 4 },
+  banner: { width: '100%', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 16, marginBottom: 4 },
+  bannerSynced: { backgroundColor: '#dcfce7' },
+  bannerPending: { backgroundColor: '#fef9c3' },
+  bannerText: { fontSize: 13, fontWeight: '500', textAlign: 'center' },
+  bannerTextSynced: { color: '#15803d' },
+  bannerTextPending: { color: '#92400e' },
+  primaryButton: { width: 240, backgroundColor: '#111827', paddingVertical: 14, paddingHorizontal: 24, borderRadius: 8 },
+  primaryButtonText: { color: '#fff', fontWeight: '600', textAlign: 'center' },
+  secondaryButton: { width: 240, borderWidth: 1, borderColor: '#e5e7eb', paddingVertical: 14, paddingHorizontal: 24, borderRadius: 8 },
+  secondaryButtonText: { color: '#374151', fontWeight: '500', textAlign: 'center' },
+  signOut: { color: '#9ca3af', fontSize: 13, marginTop: 8 },
+});

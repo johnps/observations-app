@@ -4,6 +4,8 @@ import {
   StyleSheet, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../App';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
@@ -17,7 +19,7 @@ const MAX_PHOTOS = 5;
 type Props = { blockLeadEmail: string };
 
 export default function ObservationForm({ blockLeadEmail }: Props) {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [fieldWorkers, setFieldWorkers] = useState<string[]>([]);
   const [villages, setVillages] = useState<string[]>([]);
   const [selectedWorker, setSelectedWorker] = useState('');
@@ -119,10 +121,11 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
     });
     const result = await syncPending();
     setSubmitting(false);
-    if (result.failed > 0 && result.synced === 0) {
-      setSubmitError('Saved offline — will sync when connection improves.');
-    }
-    navigation.goBack();
+    navigation.navigate('BlockLeadHome', {
+      email: blockLeadEmail,
+      justSubmitted: true,
+      wasSynced: result.synced > 0,
+    });
   }
 
   return (
