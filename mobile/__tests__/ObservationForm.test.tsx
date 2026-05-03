@@ -137,6 +137,22 @@ test('submitting includes photo_uris when photos are selected', async () => {
   );
 });
 
+test('submitted observation id is a valid UUID (non-UUID ids are rejected by Supabase)', async () => {
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const { getByPlaceholderText, getByText } = render(
+    <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
+  );
+  await waitFor(() => getByText('Worker One'));
+  fireEvent.press(getByText('Worker One'));
+  await waitFor(() => getByText('Village A'));
+  fireEvent.press(getByText('Village A'));
+  fireEvent.changeText(getByPlaceholderText(/observation/i), 'UUID test');
+  fireEvent.press(getByText('Submit'));
+  await waitFor(() => expect(queueObservation).toHaveBeenCalled());
+  const { id } = (queueObservation as jest.Mock).mock.calls[0][0];
+  expect(UUID_RE.test(id)).toBe(true);
+});
+
 test('submitting with text calls queueObservation and syncPending', async () => {
   const { getByPlaceholderText, getByText } = render(
     <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />

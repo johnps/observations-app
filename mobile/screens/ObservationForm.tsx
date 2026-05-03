@@ -10,6 +10,7 @@ import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
+import { v4 as uuidv4 } from 'uuid';
 import { queueObservation, getCachedFieldWorkers, getCachedVillages } from '../lib/db';
 import { syncPending } from '../lib/sync';
 
@@ -102,7 +103,7 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
     if (!selectedVillage) { setSubmitError('Please select a village.'); return; }
     setSubmitting(true);
     setSubmitError('');
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const id = uuidv4();
 
     let gps_lat: number | undefined;
     let gps_lng: number | undefined;
