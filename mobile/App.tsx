@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import { AppState, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, AppState, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
-import { NavigationContainer, useNavigation } from '@react-navigation/native';
+import { NavigationContainer, useFocusEffect, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator, NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { initDB } from './lib/db';
+import { initDB, getPendingObservations } from './lib/db';
 import { syncPending, syncHierarchy } from './lib/sync';
 import { supabase } from './lib/supabase';
 import LoginScreen from './screens/LoginScreen';
@@ -18,11 +18,28 @@ export type RootStackParamList = {
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
 function BlockLeadHomeScreen({ route }: { route: { params: { email: string; justSubmitted?: boolean; wasSynced?: boolean } } }) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { email, justSubmitted, wasSynced } = route.params;
   const [banner, setBanner] = useState('');
+  const [pendingCount, setPendingCount] = useState(0);
+  const [syncedCount, setSyncedCount] = useState<number | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const loadCounts = useCallback(async () => {
+    setPendingCount(getPendingObservations().length);
+    try {
+      const res = await fetch(`${API_BASE}/api/observations?block_lead_email=${encodeURIComponent(email)}`);
+      if (res.ok) {
+        const body = await res.json();
+        setSyncedCount((body.observations ?? []).length);
+      }
+    } catch { /* offline — leave synced count as-is */ }
+  }, [email]);
+
+  useFocusEffect(useCallback(() => { loadCounts(); }, [loadCounts]));
 
   useEffect(() => {
     if (justSubmitted) {
@@ -31,6 +48,13 @@ function BlockLeadHomeScreen({ route }: { route: { params: { email: string; just
       return () => clearTimeout(t);
     }
   }, [justSubmitted, wasSynced]);
+
+  async function handleSync() {
+    setSyncing(true);
+    await syncPending();
+    await loadCounts();
+    setSyncing(false);
+  }
 
   async function handleSignOut() {
     await supabase.auth.signOut();
@@ -49,6 +73,26 @@ function BlockLeadHomeScreen({ route }: { route: { params: { email: string; just
           </Text>
         </View>
       ) : null}
+
+      <View style={styles.statsRow}>
+        <View style={styles.stat}>
+          <Text style={styles.statNumber}>{syncedCount ?? '—'}</Text>
+          <Text style={styles.statLabel}>Synced</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.stat}>
+          <Text style={[styles.statNumber, pendingCount > 0 && styles.statNumberPending]}>{pendingCount}</Text>
+          <Text style={styles.statLabel}>Pending</Text>
+        </View>
+      </View>
+
+      {pendingCount > 0 && (
+        <TouchableOpacity style={styles.syncButton} onPress={handleSync} disabled={syncing}>
+          {syncing
+            ? <ActivityIndicator size="small" color="#374151" />
+            : <Text style={styles.syncButtonText}>Sync now</Text>}
+        </TouchableOpacity>
+      )}
 
       <TouchableOpacity
         style={styles.primaryButton}
@@ -140,6 +184,14 @@ const styles = StyleSheet.create({
   bannerText: { fontSize: 13, fontWeight: '500', textAlign: 'center' },
   bannerTextSynced: { color: '#15803d' },
   bannerTextPending: { color: '#92400e' },
+  statsRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f9fafb', borderRadius: 10, paddingVertical: 12, paddingHorizontal: 32, gap: 24, marginBottom: 4 },
+  stat: { alignItems: 'center', gap: 2 },
+  statNumber: { fontSize: 24, fontWeight: '700', color: '#111827' },
+  statNumberPending: { color: '#b45309' },
+  statLabel: { fontSize: 11, color: '#9ca3af', fontWeight: '500' },
+  statDivider: { width: 1, height: 32, backgroundColor: '#e5e7eb' },
+  syncButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 20, minWidth: 100, minHeight: 36 },
+  syncButtonText: { fontSize: 13, color: '#374151', fontWeight: '500' },
   primaryButton: { width: 240, backgroundColor: '#111827', paddingVertical: 14, paddingHorizontal: 24, borderRadius: 8 },
   primaryButtonText: { color: '#fff', fontWeight: '600', textAlign: 'center' },
   secondaryButton: { width: 240, borderWidth: 1, borderColor: '#e5e7eb', paddingVertical: 14, paddingHorizontal: 24, borderRadius: 8 },

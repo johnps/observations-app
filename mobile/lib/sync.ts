@@ -6,7 +6,8 @@ const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const FETCH_TIMEOUT_MS = 30_000;
 
 let _syncing = false;
-export function _resetSyncLock() { _syncing = false; }
+let _retryOnComplete = false;
+export function _resetSyncLock() { _syncing = false; _retryOnComplete = false; }
 
 function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
   const controller = new AbortController();
@@ -18,8 +19,14 @@ function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> 
 export type SyncResult = { synced: number; failed: number; errors: string[] };
 
 export async function syncPending(): Promise<SyncResult> {
-  if (_syncing) return { synced: 0, failed: 0, errors: [] };
+  if (_syncing) {
+    // A sync is already running — flag a follow-up so the observation
+    // queued after this call started doesn't get stranded.
+    _retryOnComplete = true;
+    return { synced: 0, failed: 0, errors: [] };
+  }
   _syncing = true;
+  _retryOnComplete = false;
 
   const pending = getPendingObservations();
   let synced = 0;
@@ -69,6 +76,10 @@ export async function syncPending(): Promise<SyncResult> {
     }
   } finally {
     _syncing = false;
+    if (_retryOnComplete) {
+      _retryOnComplete = false;
+      syncPending();
+    }
   }
 
   return { synced, failed, errors };

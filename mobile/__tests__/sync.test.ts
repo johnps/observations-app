@@ -81,6 +81,29 @@ test('syncPending deletes local files after successful upload', async () => {
   expect(FileSystem.deleteAsync).toHaveBeenCalledWith('file:///c.jpg', { idempotent: true });
 });
 
+// Sync lock retry: observation queued while sync is in-flight gets picked up
+test('syncPending retries after lock clears when called while sync is in-flight', async () => {
+  let resolveFirst!: (r: Response) => void;
+  const hangingFetch = new Promise<Response>(res => { resolveFirst = res; });
+  (global.fetch as jest.Mock)
+    .mockReturnValueOnce(hangingFetch)  // first sync hangs
+    .mockResolvedValue({ ok: true });   // retry sync succeeds
+
+  (getPendingObservations as jest.Mock)
+    .mockReturnValueOnce([{ id: 'a', payload: '{"id":"a","text":"t"}' }]) // first sync
+    .mockReturnValueOnce([{ id: 'b', payload: '{"id":"b","text":"t"}' }]); // retry
+
+  const firstSync = syncPending();
+  syncPending(); // blocked — should schedule retry
+
+  resolveFirst({ ok: false, status: 500 } as Response);
+  await firstSync;
+  // let the retry (fire-and-forget) run
+  await new Promise(r => setTimeout(r, 0));
+
+  expect(markSynced).toHaveBeenCalledWith('b');
+});
+
 // Issue B: sync lock
 test('syncPending does not run concurrently', async () => {
   let resolveFirst!: (r: Response) => void;
