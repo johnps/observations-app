@@ -40,13 +40,15 @@ export function markSynced(id: string) {
 }
 
 export function cacheHierarchy(blockLeadEmail: string, rows: { field_worker_name: string; village_name: string }[]) {
-  db.runSync('DELETE FROM hierarchy_cache WHERE block_lead_email = ?', [blockLeadEmail]);
-  for (const r of rows) {
-    db.runSync(
-      'INSERT INTO hierarchy_cache (block_lead_email, field_worker_name, village_name) VALUES (?, ?, ?)',
-      [blockLeadEmail, r.field_worker_name, r.village_name]
-    );
-  }
+  db.withTransactionSync(() => {
+    db.runSync('DELETE FROM hierarchy_cache WHERE block_lead_email = ?', [blockLeadEmail]);
+    for (const r of rows) {
+      db.runSync(
+        'INSERT INTO hierarchy_cache (block_lead_email, field_worker_name, village_name) VALUES (?, ?, ?)',
+        [blockLeadEmail, r.field_worker_name, r.village_name]
+      );
+    }
+  });
 }
 
 export function getCachedFieldWorkers(blockLeadEmail: string): string[] {

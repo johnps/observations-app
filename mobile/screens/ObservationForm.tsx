@@ -6,6 +6,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../App';
+import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
@@ -65,7 +66,12 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
       [{ resize: { width: Math.min(width, 1280) } }],
       { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
     );
-    setPhotoUris(prev => [...prev, resized.uri]);
+    // Copy to permanent storage so the file survives cache eviction and reboots
+    const filename = `photo_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+    const destUri = `${FileSystem.documentDirectory}obs_photos/${filename}`;
+    await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory}obs_photos`, { intermediates: true });
+    await FileSystem.copyAsync({ from: resized.uri, to: destUri });
+    setPhotoUris(prev => [...prev, destUri]);
   }
 
   async function handlePickPhoto() {
@@ -108,17 +114,23 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
       // permission denied or unavailable — submit without GPS
     }
 
-    queueObservation({
-      id,
-      text: observationText,
-      field_worker_name: selectedWorker,
-      village_name: selectedVillage,
-      block_lead_email: blockLeadEmail,
-      photo_uris: photoUris,
-      gps_lat,
-      gps_lng,
-      submitted_at: new Date().toISOString(),
-    });
+    try {
+      queueObservation({
+        id,
+        text: observationText,
+        field_worker_name: selectedWorker,
+        village_name: selectedVillage,
+        block_lead_email: blockLeadEmail,
+        photo_uris: photoUris,
+        gps_lat,
+        gps_lng,
+        submitted_at: new Date().toISOString(),
+      });
+    } catch {
+      setSubmitError('Could not save observation — device may be out of storage.');
+      setSubmitting(false);
+      return;
+    }
     const result = await syncPending();
     setSubmitting(false);
     navigation.navigate('BlockLeadHome', {

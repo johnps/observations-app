@@ -1,4 +1,4 @@
-import { syncPending } from '../lib/sync';
+import { syncPending, _resetSyncLock } from '../lib/sync';
 import { getPendingObservations, markSynced } from '../lib/db';
 import { uploadPhoto } from '../lib/storage';
 
@@ -17,6 +17,7 @@ jest.mock('expo-file-system', () => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  _resetSyncLock();
   (global.fetch as jest.Mock) = jest.fn();
 });
 
@@ -78,4 +79,46 @@ test('syncPending deletes local files after successful upload', async () => {
   await syncPending();
 
   expect(FileSystem.deleteAsync).toHaveBeenCalledWith('file:///c.jpg', { idempotent: true });
+});
+
+// Issue B: sync lock
+test('syncPending does not run concurrently', async () => {
+  let resolveFirst!: (r: Response) => void;
+  const hangingFetch = new Promise<Response>(res => { resolveFirst = res; });
+  (global.fetch as jest.Mock).mockReturnValueOnce(hangingFetch);
+  (getPendingObservations as jest.Mock).mockReturnValue([
+    { id: 'a', payload: '{"id":"a","text":"t"}' },
+  ]);
+
+  const firstSync = syncPending();
+  const secondResult = await syncPending(); // should return immediately
+
+  expect(secondResult).toEqual({ synced: 0, failed: 0, errors: [] });
+  expect(global.fetch).toHaveBeenCalledTimes(1);
+
+  resolveFirst({ ok: false, status: 500 } as Response);
+  await firstSync;
+});
+
+// Issue B: fetch timeout
+test('syncPending leaves observation in queue when fetch times out', async () => {
+  jest.useFakeTimers();
+  (getPendingObservations as jest.Mock).mockReturnValue([
+    { id: 'b', payload: '{"id":"b","text":"t"}' },
+  ]);
+  (global.fetch as jest.Mock).mockImplementation((_url: string, options: RequestInit) =>
+    new Promise((_resolve, reject) => {
+      options?.signal?.addEventListener('abort', () =>
+        reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }))
+      );
+    })
+  );
+
+  const syncPromise = syncPending();
+  await jest.advanceTimersByTimeAsync(31_000);
+  const result = await syncPromise;
+
+  expect(result.failed).toBe(1);
+  expect(markSynced).not.toHaveBeenCalled();
+  jest.useRealTimers();
 });
