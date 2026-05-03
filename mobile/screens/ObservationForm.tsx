@@ -24,6 +24,7 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
   const [selectedVillage, setSelectedVillage] = useState('');
   const [observationText, setObservationText] = useState('');
   const [photoUris, setPhotoUris] = useState<string[]>([]);
+  const [loadingWorkers, setLoadingWorkers] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
@@ -35,10 +36,12 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
     const cached = getCachedFieldWorkers(blockLeadEmail);
     if (cached.length > 0) {
       setFieldWorkers(cached);
+      setLoadingWorkers(false);
     } else {
       fetch(`${FIELD_WORKERS_URL}?block_lead_email=${encodeURIComponent(blockLeadEmail)}`)
         .then(r => r.json())
-        .then(b => setFieldWorkers((b.field_workers ?? []).map((w: { field_worker_name: string }) => w.field_worker_name)));
+        .then(b => setFieldWorkers((b.field_workers ?? []).map((w: { field_worker_name: string }) => w.field_worker_name)))
+        .finally(() => setLoadingWorkers(false));
     }
   }, [blockLeadEmail]);
 
@@ -125,7 +128,14 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.label}>Field Worker</Text>
-      {fieldWorkers.map(w => (
+      {loadingWorkers ? (
+        <View style={styles.loadingRow}>
+          <ActivityIndicator size="small" color="#9ca3af" />
+          <Text style={styles.loadingText}>Loading field workers…</Text>
+        </View>
+      ) : fieldWorkers.length === 0 ? (
+        <Text style={styles.emptyText}>No field workers found. Contact your administrator.</Text>
+      ) : fieldWorkers.map(w => (
         <TouchableOpacity
           key={w}
           style={[styles.option, selectedWorker === w && styles.optionSelected]}
@@ -190,9 +200,9 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
 
       {submitError ? <Text style={styles.error}>{submitError}</Text> : null}
       <TouchableOpacity
-        style={[styles.submit, submitting && styles.submitDisabled]}
+        style={[styles.submit, (submitting || loadingWorkers) && styles.submitDisabled]}
         onPress={handleSubmit}
-        disabled={submitting}
+        disabled={submitting || loadingWorkers}
       >
         {submitting
           ? <ActivityIndicator color="#fff" />
@@ -223,4 +233,7 @@ const styles = StyleSheet.create({
   submitDisabled: { opacity: 0.5 },
   submitText: { color: '#fff', fontWeight: '600', fontSize: 15 },
   error: { marginTop: 12, fontSize: 13, color: '#dc2626', textAlign: 'center' },
+  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 },
+  loadingText: { fontSize: 13, color: '#9ca3af' },
+  emptyText: { fontSize: 13, color: '#f59e0b', paddingVertical: 8 },
 });
