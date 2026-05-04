@@ -22,6 +22,7 @@
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-native": "^5.4.3",
     "@testing-library/react-native": "^13.3.3",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
@@ -31,6 +32,7 @@
     "jest": "^30.3.0",
     "jest-expo": "^55.0.16",
     "tailwindcss": "^4",
+    "ts-jest": "^29.4.9",
     "typescript": "^5"
   }
 }

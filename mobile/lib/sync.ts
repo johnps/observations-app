@@ -7,7 +7,6 @@ const FETCH_TIMEOUT_MS = 30_000;
 
 let _syncing = false;
 let _retryOnComplete = false;
-export function _resetSyncLock() { _syncing = false; _retryOnComplete = false; }
 
 function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
   const controller = new AbortController();
@@ -16,14 +15,12 @@ function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> 
     .finally(() => clearTimeout(timer));
 }
 
-export type SyncResult = { synced: number; failed: number; errors: string[] };
+export type SyncResult = { synced: number; failed: number; errors: string[]; skipped?: true };
 
 export async function syncPending(): Promise<SyncResult> {
   if (_syncing) {
-    // A sync is already running — flag a follow-up so the observation
-    // queued after this call started doesn't get stranded.
     _retryOnComplete = true;
-    return { synced: 0, failed: 0, errors: [] };
+    return { skipped: true, synced: 0, failed: 0, errors: [] };
   }
   _syncing = true;
   _retryOnComplete = false;
@@ -34,14 +31,13 @@ export async function syncPending(): Promise<SyncResult> {
   const errors: string[] = [];
 
   try {
-    for (const row of pending) {
+    for (const obs of pending) {
       try {
-        const obs = JSON.parse(row.payload) as Record<string, unknown>;
-        const photoUris = (obs.photo_uris as string[] | undefined) ?? [];
+        const photoUris = obs.photo_uris;
 
         const photoUrls: string[] = [];
         for (let i = 0; i < photoUris.length; i++) {
-          photoUrls.push(await uploadPhoto(photoUris[i], obs.id as string, i));
+          photoUrls.push(await uploadPhoto(photoUris[i], obs.id, i));
         }
 
         const { photo_uris: _, ...rest } = obs;
@@ -57,15 +53,15 @@ export async function syncPending(): Promise<SyncResult> {
           for (const uri of photoUris) {
             try { await FileSystem.deleteAsync(uri, { idempotent: true }); } catch {}
           }
-          markSynced(row.id);
+          markSynced(obs.id);
           synced++;
         } else if (res.status === 400) {
           for (const uri of photoUris) {
             try { await FileSystem.deleteAsync(uri, { idempotent: true }); } catch {}
           }
           const body = await res.json().catch(() => ({}));
-          errors.push(`Discarded observation ${row.id}: ${body.error ?? 'invalid data'}`);
-          markSynced(row.id);
+          errors.push(`Discarded observation ${obs.id}: ${body.error ?? 'invalid data'}`);
+          markSynced(obs.id);
           failed++;
         } else {
           failed++;

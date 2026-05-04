@@ -25,17 +25,14 @@ export default function MyObservations({ blockLeadEmail }: Props) {
 
   const load = useCallback(async () => {
     // Pending from local SQLite
-    const pending = getPendingObservations().map(row => {
-      const obs = JSON.parse(row.payload);
-      return {
-        id: obs.id as string,
-        text: obs.text as string,
-        field_worker_name: obs.field_worker_name as string,
-        village_name: obs.village_name as string,
-        submitted_at: obs.submitted_at as string,
-        synced: false,
-      };
-    });
+    const pending = getPendingObservations().map(obs => ({
+      id: obs.id,
+      text: obs.text,
+      field_worker_name: obs.field_worker_name,
+      village_name: obs.village_name,
+      submitted_at: obs.submitted_at,
+      synced: false as const,
+    }));
     const pendingIds = new Set(pending.map(p => p.id));
 
     // Synced from server

@@ -1,6 +1,5 @@
-import { syncPending, syncHierarchy, _resetSyncLock } from '../lib/sync';
-import { getPendingObservations, markSynced, cacheHierarchy } from '../lib/db';
-import { uploadPhoto } from '../lib/storage';
+import type { SyncResult } from '../lib/sync';
+import type { PendingObservation } from '../types/observation';
 
 jest.mock('../lib/db', () => ({
   getPendingObservations: jest.fn(),
@@ -18,8 +17,14 @@ jest.mock('expo-file-system', () => ({
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-// Fake observation builders
-function fakeObs(overrides: Record<string, unknown> = {}) {
+let syncPending: () => Promise<SyncResult>;
+let syncHierarchy: (email: string) => Promise<void>;
+let getPendingObservations: jest.Mock;
+let markSynced: jest.Mock;
+let cacheHierarchy: jest.Mock;
+let uploadPhoto: jest.Mock;
+
+function fakeObs(overrides: Partial<PendingObservation> = {}): PendingObservation {
   return {
     id: '550e8400-e29b-41d4-a716-446655440001',
     text: 'Test observation',
@@ -27,18 +32,31 @@ function fakeObs(overrides: Record<string, unknown> = {}) {
     village_name: 'Rampur',
     block_lead_email: 'lead@example.com',
     submitted_at: '2026-05-03T10:00:00.000Z',
-    photo_uris: [] as string[],
+    photo_uris: [],
     ...overrides,
   };
 }
 
 function fakeRow(obs = fakeObs()) {
-  return { id: obs.id as string, payload: JSON.stringify(obs) };
+  return obs;
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
-  _resetSyncLock();
+  jest.resetModules();
+
+  const db = require('../lib/db');
+  getPendingObservations = db.getPendingObservations;
+  markSynced = db.markSynced;
+  cacheHierarchy = db.cacheHierarchy;
+
+  const storage = require('../lib/storage');
+  uploadPhoto = storage.uploadPhoto;
+
+  const sync = require('../lib/sync');
+  syncPending = sync.syncPending;
+  syncHierarchy = sync.syncHierarchy;
+
   (global.fetch as jest.Mock) = jest.fn();
 });
 
@@ -193,6 +211,22 @@ test('syncPending processes multiple observations independently', async () => {
   expect(result).toEqual({ synced: 1, failed: 1, errors: [] });
 });
 
+test('syncPending returns skipped: true when a sync is already running', async () => {
+  let resolveFirst!: (r: Response) => void;
+  const hanging = new Promise<Response>(res => { resolveFirst = res; });
+  (global.fetch as jest.Mock).mockReturnValueOnce(hanging);
+  (getPendingObservations as jest.Mock).mockReturnValue([fakeRow()]);
+
+  const first = syncPending();
+  const secondResult = await syncPending();
+
+  expect(secondResult.skipped).toBe(true);
+  expect(secondResult).toMatchObject({ synced: 0, failed: 0, errors: [] });
+
+  resolveFirst({ ok: false, status: 500 } as Response);
+  await first;
+});
+
 test('syncPending does not run concurrently (lock)', async () => {
   let resolveFirst!: (r: Response) => void;
   const hanging = new Promise<Response>(res => { resolveFirst = res; });
@@ -202,7 +236,7 @@ test('syncPending does not run concurrently (lock)', async () => {
   const first = syncPending();
   const secondResult = await syncPending();
 
-  expect(secondResult).toEqual({ synced: 0, failed: 0, errors: [] });
+  expect(secondResult.skipped).toBe(true);
   expect(global.fetch).toHaveBeenCalledTimes(1);
 
   resolveFirst({ ok: false, status: 500 } as Response);

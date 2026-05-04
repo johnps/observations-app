@@ -12,11 +12,11 @@ import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import { v4 as uuidv4 } from 'uuid';
-import { queueObservation, getCachedFieldWorkers, getCachedVillages } from '../lib/db';
+import { queueObservation } from '../lib/db';
+import type { PendingObservation } from '../types/observation';
 import { syncPending } from '../lib/sync';
+import { useHierarchy } from '../lib/useHierarchy';
 
-const FIELD_WORKERS_URL = `${process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000'}/api/hierarchy/field-workers`;
-const VILLAGES_URL = `${process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000'}/api/hierarchy/villages`;
 const MAX_PHOTOS = 5;
 
 type PickerProps = {
@@ -95,45 +95,19 @@ type Props = { blockLeadEmail: string };
 
 export default function ObservationForm({ blockLeadEmail }: Props) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [fieldWorkers, setFieldWorkers] = useState<string[]>([]);
-  const [villages, setVillages] = useState<string[]>([]);
   const [selectedWorker, setSelectedWorker] = useState('');
   const [selectedVillage, setSelectedVillage] = useState('');
   const [observationText, setObservationText] = useState('');
   const [photoUris, setPhotoUris] = useState<string[]>([]);
-  const [loadingWorkers, setLoadingWorkers] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [photoError, setPhotoError] = useState('');
 
+  const { fieldWorkers, villages } = useHierarchy(blockLeadEmail, selectedWorker);
+
   useEffect(() => {
     Location.requestForegroundPermissionsAsync();
   }, []);
-
-  useEffect(() => {
-    const cached = getCachedFieldWorkers(blockLeadEmail);
-    if (cached.length > 0) {
-      setFieldWorkers(cached);
-      setLoadingWorkers(false);
-    } else {
-      fetch(`${FIELD_WORKERS_URL}?block_lead_email=${encodeURIComponent(blockLeadEmail)}`)
-        .then(r => r.json())
-        .then(b => setFieldWorkers((b.field_workers ?? []).map((w: { field_worker_name: string }) => w.field_worker_name)))
-        .finally(() => setLoadingWorkers(false));
-    }
-  }, [blockLeadEmail]);
-
-  useEffect(() => {
-    if (!selectedWorker) { setVillages([]); return; }
-    const cached = getCachedVillages(blockLeadEmail, selectedWorker);
-    if (cached.length > 0) {
-      setVillages(cached);
-    } else {
-      fetch(`${VILLAGES_URL}?block_lead_email=${encodeURIComponent(blockLeadEmail)}&field_worker_name=${encodeURIComponent(selectedWorker)}`)
-        .then(r => r.json())
-        .then(b => setVillages((b.villages ?? []).map((v: { village_name: string }) => v.village_name)));
-    }
-  }, [selectedWorker, blockLeadEmail]);
 
   async function addPhoto(uri: string, width: number) {
     const context = ImageManipulator.manipulate(uri);
@@ -206,7 +180,7 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
     }
 
     try {
-      queueObservation({
+      const obs: PendingObservation = {
         id,
         text: observationText,
         field_worker_name: selectedWorker,
@@ -216,7 +190,8 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
         gps_lat,
         gps_lng,
         submitted_at: new Date().toISOString(),
-      });
+      };
+      queueObservation(obs);
     } catch {
       setSubmitError('Could not save observation — device may be out of storage.');
       setSubmitting(false);
@@ -242,7 +217,6 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
           value={selectedWorker}
           options={fieldWorkers}
           onSelect={w => { setSelectedWorker(w); setSelectedVillage(''); }}
-          loading={loadingWorkers}
           placeholder="Select field worker"
           testID="field-worker-picker"
         />
@@ -298,9 +272,9 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
         {photoError ? <Text style={styles.error}>{photoError}</Text> : null}
         {submitError ? <Text style={styles.error}>{submitError}</Text> : null}
         <TouchableOpacity
-          style={[styles.submit, (submitting || loadingWorkers) && styles.submitDisabled]}
+          style={[styles.submit, submitting && styles.submitDisabled]}
           onPress={handleSubmit}
-          disabled={submitting || loadingWorkers}
+          disabled={submitting}
         >
           {submitting
             ? <ActivityIndicator color="#fff" />

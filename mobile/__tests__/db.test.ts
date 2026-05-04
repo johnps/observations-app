@@ -10,14 +10,14 @@ beforeEach(() => {
 });
 
 test('queueObservation stores a pending observation', () => {
-  queueObservation({ id: 'abc-123', text: 'test obs', field_worker_name: 'W', village_name: 'V', block_lead_email: 'e@e.com', submitted_at: '2024-01-01T00:00:00Z' });
+  queueObservation({ id: 'abc-123', text: 'test obs', field_worker_name: 'W', village_name: 'V', block_lead_email: 'e@e.com', photo_uris: [], submitted_at: '2024-01-01T00:00:00Z' });
   const pending = getPendingObservations();
   expect(pending).toHaveLength(1);
   expect(pending[0].id).toBe('abc-123');
 });
 
 test('markSynced removes observation from the pending list', () => {
-  queueObservation({ id: 'xyz-456', text: 'test obs', field_worker_name: 'W', village_name: 'V', block_lead_email: 'e@e.com', submitted_at: '2024-01-01T00:00:00Z' });
+  queueObservation({ id: 'xyz-456', text: 'test obs', field_worker_name: 'W', village_name: 'V', block_lead_email: 'e@e.com', photo_uris: [], submitted_at: '2024-01-01T00:00:00Z' });
   markSynced('xyz-456');
   expect(getPendingObservations()).toHaveLength(0);
 });
@@ -26,7 +26,7 @@ test('markSynced removes observation from the pending list', () => {
 test('queueObservation propagates storage errors', () => {
   const sqlite = require('expo-sqlite');
   sqlite._db.runSync.mockImplementationOnce(() => { throw new Error('disk full'); });
-  expect(() => queueObservation({ id: 'e', text: 't', field_worker_name: 'W', village_name: 'V', block_lead_email: 'e@e.com', submitted_at: '2024-01-01T00:00:00Z' }))
+  expect(() => queueObservation({ id: 'e', text: 't', field_worker_name: 'W', village_name: 'V', block_lead_email: 'e@e.com', photo_uris: [], submitted_at: '2024-01-01T00:00:00Z' }))
     .toThrow('disk full');
 });
 
@@ -42,6 +42,21 @@ test('cacheHierarchy replaces all previous entries for a block lead', () => {
   ]);
   expect(getCachedFieldWorkers('lead@test.com')).toEqual(['New Worker']);
   expect(getCachedVillages('lead@test.com', 'Old Worker')).toEqual([]);
+});
+
+test('getPendingObservations returns typed observation fields — not a raw payload string', () => {
+  queueObservation({
+    id: 'abc-typed',
+    text: 'typed test',
+    field_worker_name: 'W',
+    village_name: 'V',
+    block_lead_email: 'e@e.com',
+    photo_uris: ['file:///a.jpg'],
+    submitted_at: '2024-01-01T00:00:00Z',
+  });
+  const pending = getPendingObservations();
+  expect(pending[0].photo_uris).toEqual(['file:///a.jpg']);
+  expect((pending[0] as any).payload).toBeUndefined();
 });
 
 test('cacheHierarchy does not affect entries for other block leads', () => {

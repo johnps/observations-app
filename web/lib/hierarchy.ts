@@ -88,7 +88,7 @@ export type ParseResult =
   | { valid: false; errors: ValidationError[] }
   | { valid: true; errors: []; rows: HierarchyRow[] };
 
-export function parseCSV(text: string): ParseResult {
+function parseCSV(text: string): ParseResult {
   const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
   if (lines.length < 2) {
     return { valid: false, errors: [{ row: 0, field: '', message: 'CSV has no data rows' }] };
@@ -142,7 +142,7 @@ export function parseCSV(text: string): ParseResult {
 
 export type Preview = { adds: number; updates: number; removes: number };
 
-export async function previewChanges(rows: HierarchyRow[]): Promise<Preview> {
+async function previewChanges(rows: HierarchyRow[]): Promise<Preview> {
   const upsertRows = rows.filter(r => r.action === 'upsert');
   const removeRows = rows.filter(r => r.action === 'remove');
 
@@ -166,7 +166,7 @@ export async function previewChanges(rows: HierarchyRow[]): Promise<Preview> {
 
 export type UploadResult = { added: number; updated: number; removed: number };
 
-export async function applyChanges(rows: HierarchyRow[]): Promise<UploadResult> {
+async function applyChanges(rows: HierarchyRow[]): Promise<UploadResult> {
   const upsertRows = rows.filter(r => r.action === 'upsert');
   const removeRows = rows.filter(r => r.action === 'remove');
 
@@ -201,4 +201,21 @@ export async function applyChanges(rows: HierarchyRow[]): Promise<UploadResult> 
   }
 
   return { added: preview.adds, updated: preview.updates, removed: removeRows.length };
+}
+
+export async function validateHierarchyCSV(csv: string): Promise<{
+  valid: boolean;
+  errors: ValidationError[];
+  preview: Preview | null;
+}> {
+  const parsed = parseCSV(csv);
+  if (!parsed.valid) return { valid: false, errors: parsed.errors, preview: null };
+  const preview = await previewChanges(parsed.rows);
+  return { valid: true, errors: [], preview };
+}
+
+export async function applyHierarchyCSV(csv: string): Promise<UploadResult> {
+  const parsed = parseCSV(csv);
+  if (!parsed.valid) throw new Error('Invalid CSV');
+  return applyChanges(parsed.rows);
 }

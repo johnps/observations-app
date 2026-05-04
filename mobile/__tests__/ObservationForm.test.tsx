@@ -12,8 +12,10 @@ jest.mock('@react-navigation/native', () => ({
 
 jest.mock('../lib/db', () => ({
   queueObservation: jest.fn(),
-  getCachedFieldWorkers: jest.fn().mockReturnValue([]),
-  getCachedVillages: jest.fn().mockReturnValue([]),
+}));
+
+jest.mock('../lib/useHierarchy', () => ({
+  useHierarchy: jest.fn(),
 }));
 jest.mock('../lib/sync', () => ({ syncPending: jest.fn().mockResolvedValue({ synced: 1, failed: 0, errors: [] }) }));
 
@@ -42,15 +44,18 @@ jest.mock('expo-file-system', () => ({
   deleteAsync: jest.fn().mockResolvedValue(undefined),
 }));
 
-const WORKERS = [{ field_worker_name: 'Worker One' }, { field_worker_name: 'Worker Two' }];
-const VILLAGES = [{ village_name: 'Village A' }, { village_name: 'Village B' }];
+const WORKERS = ['Worker One', 'Worker Two'];
+const VILLAGES = ['Village A', 'Village B'];
 
 beforeEach(() => {
   mockNavigate.mockClear();
   mockGoBack.mockClear();
   (queueObservation as jest.Mock).mockClear();
   (syncPending as jest.Mock).mockResolvedValue({ synced: 1, failed: 0, errors: [] });
-  // Default: photo processing succeeds
+
+  const { useHierarchy } = require('../lib/useHierarchy');
+  useHierarchy.mockReturnValue({ fieldWorkers: WORKERS, villages: VILLAGES });
+
   const { ImageManipulator } = require('expo-image-manipulator');
   ImageManipulator.manipulate.mockReturnValue({
     resize: jest.fn().mockReturnThis(),
@@ -58,18 +63,8 @@ beforeEach(() => {
       saveAsync: jest.fn().mockResolvedValue({ uri: 'file:///resized.jpg' }),
     }),
   });
-  // Reset location mock so GPS-hang tests don't contaminate subsequent tests
   const Location = require('expo-location');
   Location.getCurrentPositionAsync.mockResolvedValue({ coords: { latitude: 26.9, longitude: 75.8 } });
-  (global.fetch as jest.Mock) = jest.fn((url: string) => {
-    if (url.includes('field-workers')) {
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ field_workers: WORKERS }) });
-    }
-    if (url.includes('villages')) {
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ villages: VILLAGES }) });
-    }
-    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-  });
 });
 
 test('observation form renders text input, STT hint, and submit button', async () => {

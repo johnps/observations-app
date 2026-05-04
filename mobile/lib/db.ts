@@ -1,4 +1,5 @@
 import * as SQLite from 'expo-sqlite';
+import type { PendingObservation } from '../types/observation';
 
 let db: SQLite.SQLiteDatabase;
 
@@ -14,22 +15,23 @@ export function initDB() {
   )`);
 }
 
-export interface PendingRow {
+interface PendingRow {
   id: string;
   payload: string;
 }
 
-export function queueObservation(obs: Record<string, unknown>) {
+export function queueObservation(obs: PendingObservation) {
   db.runSync(
     'INSERT OR REPLACE INTO pending_observations (id, payload, synced) VALUES (?, ?, 0)',
-    [obs.id as string, JSON.stringify(obs)]
+    [obs.id, JSON.stringify(obs)]
   );
 }
 
-export function getPendingObservations(): PendingRow[] {
-  return db.getAllSync<PendingRow>(
+export function getPendingObservations(): PendingObservation[] {
+  const rows = db.getAllSync<PendingRow>(
     'SELECT id, payload FROM pending_observations WHERE synced = 0'
   );
+  return rows.map(r => JSON.parse(r.payload) as PendingObservation);
 }
 
 export function markSynced(id: string) {

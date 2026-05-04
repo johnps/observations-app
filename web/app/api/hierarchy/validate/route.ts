@@ -1,4 +1,4 @@
-import { parseCSV, previewChanges } from '@/lib/hierarchy';
+import { validateHierarchyCSV } from '@/lib/hierarchy';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
@@ -7,12 +7,6 @@ export async function POST(req: NextRequest) {
   if (!file) return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
 
   const text = await file.text();
-  const parsed = parseCSV(text);
-
-  if (!parsed.valid) {
-    return NextResponse.json({ valid: false, errors: parsed.errors, preview: null });
-  }
-
-  const preview = await previewChanges(parsed.rows);
-  return NextResponse.json({ valid: true, errors: [], preview });
+  const result = await validateHierarchyCSV(text);
+  return NextResponse.json(result);
 }

@@ -27,13 +27,20 @@ export default function LoginPage() {
   }, []);
 
   async function routeByRole(email: string) {
-    const res = await fetch(`/api/users/role?email=${encodeURIComponent(email)}`);
-    if (res.ok) {
-      const { role } = await res.json();
-      if (ROLE_ROUTES[role]) {
-        router.replace(ROLE_ROUTES[role]);
-        return;
-      }
+    const url = `/api/users/role?email=${encodeURIComponent(email)}`;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(url);
+        if (res.ok) {
+          const { role } = await res.json();
+          if (ROLE_ROUTES[role]) {
+            router.replace(ROLE_ROUTES[role]);
+            return;
+          }
+          break; // role unrecognised — retrying won't help
+        }
+      } catch { /* transient — try again */ }
+      if (attempt < 2) await new Promise(r => setTimeout(r, 1000));
     }
     setNoAccess(true);
     setChecking(false);
@@ -65,7 +72,7 @@ export default function LoginPage() {
       {noAccess ? (
         <>
           <p className="text-sm text-red-600 max-w-xs text-center">
-            Your account hasn&apos;t been assigned a role yet. Contact your administrator.
+            Your account hasn&apos;t been assigned a role. Contact your administrator.
           </p>
           <button onClick={handleSignOut} className="text-sm text-gray-400 underline">
             Sign out
