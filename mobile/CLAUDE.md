@@ -37,3 +37,28 @@ ImageManipulator.manipulate.mockReturnValue({
   }),
 });
 ```
+
+## sync.test.ts — jest.resetModules() pattern
+
+`_resetSyncLock` was a test-only export that leaked internal state. It has been removed. `sync.test.ts` now uses `jest.resetModules()` in `beforeEach` to get a fresh module with a clean lock on each test.
+
+This means the file uses **dynamic `require()` in `beforeEach`** instead of top-level ES imports for the sync module and its mocked dependencies:
+
+```typescript
+let syncPending: () => Promise<SyncResult>;
+let getPendingObservations: jest.Mock;
+// ...
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  jest.resetModules();
+
+  const db = require('../lib/db');
+  getPendingObservations = db.getPendingObservations;
+  // ...
+  const sync = require('../lib/sync');
+  syncPending = sync.syncPending;
+});
+```
+
+Do not revert to top-level imports for `sync` or `db` in this file — the lock state would persist across tests.
