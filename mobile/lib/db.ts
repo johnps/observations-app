@@ -3,11 +3,17 @@ import type { PendingObservation } from '../types/observation';
 
 let db: SQLite.SQLiteDatabase;
 
+export const MAX_RETRIES = 5;
+
 export function initDB() {
   db = SQLite.openDatabaseSync('observations.db');
   db.execSync(`CREATE TABLE IF NOT EXISTS pending_observations (
-    id TEXT PRIMARY KEY, payload TEXT NOT NULL, synced INTEGER NOT NULL DEFAULT 0
+    id TEXT PRIMARY KEY, payload TEXT NOT NULL, synced INTEGER NOT NULL DEFAULT 0,
+    retry_count INTEGER NOT NULL DEFAULT 0
   )`);
+  try {
+    db.execSync('ALTER TABLE pending_observations ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0');
+  } catch {}
   db.execSync(`CREATE TABLE IF NOT EXISTS hierarchy_cache (
     block_lead_email TEXT NOT NULL,
     field_worker_name TEXT NOT NULL,
@@ -29,7 +35,7 @@ export function queueObservation(obs: PendingObservation) {
 
 export function getPendingObservations(): PendingObservation[] {
   const rows = db.getAllSync<PendingRow>(
-    'SELECT id, payload FROM pending_observations WHERE synced = 0'
+    `SELECT id, payload FROM pending_observations WHERE synced = 0 AND retry_count < ${MAX_RETRIES}`
   );
   return rows.map(r => JSON.parse(r.payload) as PendingObservation);
 }
@@ -39,6 +45,18 @@ export function markSynced(id: string) {
     'UPDATE pending_observations SET synced = 1 WHERE id = ?',
     [id]
   );
+}
+
+export function incrementRetryCount(id: string): number {
+  db.runSync(
+    'UPDATE pending_observations SET retry_count = retry_count + 1 WHERE id = ?',
+    [id]
+  );
+  const rows = db.getAllSync<{ retry_count: number }>(
+    'SELECT retry_count FROM pending_observations WHERE id = ?',
+    [id]
+  );
+  return rows[0]?.retry_count ?? 1;
 }
 
 export function cacheHierarchy(blockLeadEmail: string, rows: { field_worker_name: string; village_name: string }[]) {

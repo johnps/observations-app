@@ -7,9 +7,11 @@ const _db = {
   runSync: jest.fn((sql, params) => {
     const s = sql.toUpperCase();
     if (s.includes('INSERT OR REPLACE')) {
-      _store[params[0]] = { id: params[0], payload: params[1], synced: 0 };
+      _store[params[0]] = { id: params[0], payload: params[1], synced: 0, retry_count: 0 };
     } else if (s.includes('UPDATE') && s.includes('SYNCED = 1')) {
       if (_store[params[0]]) _store[params[0]].synced = 1;
+    } else if (s.includes('UPDATE') && s.includes('RETRY_COUNT')) {
+      if (_store[params[0]]) _store[params[0]].retry_count = (_store[params[0]].retry_count ?? 0) + 1;
     } else if (s.includes('DELETE FROM HIERARCHY_CACHE')) {
       _hierarchyCache = _hierarchyCache.filter(r => r.block_lead_email !== params[0]);
     } else if (s.includes('INSERT INTO HIERARCHY_CACHE')) {
@@ -29,7 +31,11 @@ const _db = {
         .filter(r => r.block_lead_email === params[0] && r.field_worker_name === params[1])
         .map(r => ({ village_name: r.village_name }));
     }
-    return Object.values(_store).filter(r => r.synced === 0);
+    if (s.includes('SELECT RETRY_COUNT')) {
+      const row = _store[params[0]];
+      return row ? [{ retry_count: row.retry_count ?? 0 }] : [];
+    }
+    return Object.values(_store).filter(r => r.synced === 0 && (r.retry_count ?? 0) < 5);
   }),
 };
 

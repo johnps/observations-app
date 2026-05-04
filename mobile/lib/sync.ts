@@ -1,12 +1,17 @@
 import * as FileSystem from 'expo-file-system';
-import { getPendingObservations, markSynced, cacheHierarchy } from './db';
+import NetInfo from '@react-native-community/netinfo';
+import { getPendingObservations, markSynced, cacheHierarchy, incrementRetryCount, MAX_RETRIES } from './db';
 import { uploadPhoto } from './storage';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const FETCH_TIMEOUT_MS = 30_000;
+const BACKOFF_INITIAL_MS = 30_000;
+const BACKOFF_CAP_MS = 900_000;
 
 let _syncing = false;
 let _retryOnComplete = false;
+let _backoffMs = 0;
+let _nextSyncAfter = 0;
 
 function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
   const controller = new AbortController();
@@ -18,6 +23,15 @@ function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> 
 export type SyncResult = { synced: number; failed: number; errors: string[]; skipped?: true };
 
 export async function syncPending(): Promise<SyncResult> {
+  if (Date.now() < _nextSyncAfter) {
+    return { skipped: true, synced: 0, failed: 0, errors: [] };
+  }
+
+  const netState = await NetInfo.fetch();
+  if (!netState.isConnected) {
+    return { skipped: true, synced: 0, failed: 0, errors: [] };
+  }
+
   if (_syncing) {
     _retryOnComplete = true;
     return { skipped: true, synced: 0, failed: 0, errors: [] };
@@ -64,14 +78,31 @@ export async function syncPending(): Promise<SyncResult> {
           markSynced(obs.id);
           failed++;
         } else {
+          const newCount = incrementRetryCount(obs.id);
+          if (newCount >= MAX_RETRIES) {
+            errors.push(`Discarded observation ${obs.id}: max retries exceeded`);
+            markSynced(obs.id);
+          }
           failed++;
         }
       } catch {
+        const newCount = incrementRetryCount(obs.id);
+        if (newCount >= MAX_RETRIES) {
+          errors.push(`Discarded observation ${obs.id}: max retries exceeded`);
+          markSynced(obs.id);
+        }
         failed++;
       }
     }
   } finally {
     _syncing = false;
+    if (failed > 0) {
+      _backoffMs = Math.min(_backoffMs === 0 ? BACKOFF_INITIAL_MS : _backoffMs * 2, BACKOFF_CAP_MS);
+      _nextSyncAfter = Date.now() + _backoffMs;
+    } else {
+      _backoffMs = 0;
+      _nextSyncAfter = 0;
+    }
     if (_retryOnComplete) {
       _retryOnComplete = false;
       syncPending();

@@ -5,6 +5,8 @@ jest.mock('../lib/db', () => ({
   getPendingObservations: jest.fn(),
   markSynced: jest.fn(),
   cacheHierarchy: jest.fn(),
+  incrementRetryCount: jest.fn().mockReturnValue(1),
+  MAX_RETRIES: 5,
 }));
 
 jest.mock('../lib/storage', () => ({
@@ -15,6 +17,11 @@ jest.mock('expo-file-system', () => ({
   deleteAsync: jest.fn().mockResolvedValue(undefined),
 }));
 
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { fetch: jest.fn().mockResolvedValue({ isConnected: true }) },
+}));
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 let syncPending: () => Promise<SyncResult>;
@@ -22,6 +29,7 @@ let syncHierarchy: (email: string) => Promise<void>;
 let getPendingObservations: jest.Mock;
 let markSynced: jest.Mock;
 let cacheHierarchy: jest.Mock;
+let incrementRetryCount: jest.Mock;
 let uploadPhoto: jest.Mock;
 
 function fakeObs(overrides: Partial<PendingObservation> = {}): PendingObservation {
@@ -49,6 +57,7 @@ beforeEach(() => {
   getPendingObservations = db.getPendingObservations;
   markSynced = db.markSynced;
   cacheHierarchy = db.cacheHierarchy;
+  incrementRetryCount = db.incrementRetryCount;
 
   const storage = require('../lib/storage');
   uploadPhoto = storage.uploadPhoto;
@@ -66,6 +75,17 @@ test('syncPending returns zeros when queue is empty', async () => {
   (getPendingObservations as jest.Mock).mockReturnValue([]);
   const result = await syncPending();
   expect(result).toEqual({ synced: 0, failed: 0, errors: [] });
+  expect(global.fetch).not.toHaveBeenCalled();
+});
+
+test('syncPending returns skipped: true when offline', async () => {
+  const NetInfo = require('@react-native-community/netinfo').default;
+  NetInfo.fetch.mockResolvedValueOnce({ isConnected: false });
+  (getPendingObservations as jest.Mock).mockReturnValue([fakeRow()]);
+
+  const result = await syncPending();
+
+  expect(result).toEqual({ skipped: true, synced: 0, failed: 0, errors: [] });
   expect(global.fetch).not.toHaveBeenCalled();
 });
 
@@ -243,7 +263,7 @@ test('syncPending does not run concurrently (lock)', async () => {
   await first;
 });
 
-test('syncPending retries after lock clears when called while in-flight', async () => {
+test('syncPending deferred retry is blocked by backoff when first cycle failed', async () => {
   const obs1 = fakeObs({ id: '550e8400-e29b-41d4-a716-446655440001' });
   const obs2 = fakeObs({ id: '550e8400-e29b-41d4-a716-446655440002' });
   let resolveFirst!: (r: Response) => void;
@@ -257,13 +277,135 @@ test('syncPending retries after lock clears when called while in-flight', async 
     .mockReturnValueOnce([fakeRow(obs2)]);
 
   const first = syncPending();
-  syncPending(); // blocked — schedules retry
+  syncPending(); // blocked — schedules deferred retry
 
-  resolveFirst({ ok: false, status: 500 } as Response);
+  resolveFirst({ ok: false, status: 500 } as Response); // first cycle fails → sets backoff
   await first;
-  await new Promise(r => setTimeout(r, 0)); // let retry run
+  await new Promise(r => setTimeout(r, 0)); // deferred retry fires but is blocked by backoff
 
-  expect(markSynced).toHaveBeenCalledWith(obs2.id);
+  // obs2 is not synced — backoff prevents the immediate deferred retry
+  expect(markSynced).not.toHaveBeenCalledWith(obs2.id);
+});
+
+test('syncPending skips when called within backoff window after a failed cycle', async () => {
+  const now = 1_000_000;
+  jest.spyOn(Date, 'now').mockReturnValue(now);
+  (getPendingObservations as jest.Mock).mockReturnValue([fakeRow()]);
+  (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 500 });
+
+  await syncPending(); // fails → sets backoff to 30s
+
+  // still within the 30s backoff window
+  jest.spyOn(Date, 'now').mockReturnValue(now + 29_000);
+  const result = await syncPending();
+
+  expect(result.skipped).toBe(true);
+  expect(global.fetch).toHaveBeenCalledTimes(1); // not called again
+  jest.restoreAllMocks();
+});
+
+test('syncPending proceeds after backoff window has elapsed', async () => {
+  const now = 1_000_000;
+  jest.spyOn(Date, 'now').mockReturnValue(now);
+  (getPendingObservations as jest.Mock).mockReturnValue([fakeRow()]);
+  (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 500 });
+
+  await syncPending(); // fails → sets backoff to 30s
+
+  jest.spyOn(Date, 'now').mockReturnValue(now + 31_000); // beyond the window
+  (getPendingObservations as jest.Mock).mockReturnValue([fakeRow()]);
+  (global.fetch as jest.Mock).mockResolvedValue({ ok: true });
+
+  const result = await syncPending();
+
+  expect(result.skipped).toBeUndefined();
+  expect(result.synced).toBe(1);
+  jest.restoreAllMocks();
+});
+
+test('syncPending doubles backoff with each failed cycle', async () => {
+  let now = 1_000_000;
+  jest.spyOn(Date, 'now').mockImplementation(() => now);
+  (getPendingObservations as jest.Mock).mockReturnValue([fakeRow()]);
+  (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 500 });
+
+  await syncPending(); // backoff = 30s, window ends at now+30s
+  now += 31_000;      // advance past 30s
+  await syncPending(); // second failure → backoff = 60s, window ends at now+60s
+
+  now += 59_000;       // within 60s window
+  const result = await syncPending();
+  expect(result.skipped).toBe(true);
+  jest.restoreAllMocks();
+});
+
+test('syncPending caps backoff at 900s regardless of failure count', async () => {
+  let now = 1_000_000;
+  jest.spyOn(Date, 'now').mockImplementation(() => now);
+  (getPendingObservations as jest.Mock).mockReturnValue([fakeRow()]);
+  (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 500 });
+
+  // burn through: 30s → 60s → 120s → 240s → 480s → 900s (capped)
+  for (let i = 0; i < 6; i++) {
+    const prev = now;
+    now += 901_000; // jump well past whatever the current backoff is
+    await syncPending();
+    now = prev + 901_000; // keep advancing
+  }
+
+  // after cap: window should be at most 900s ahead of last failure
+  const lastFailureTime = now;
+  const result = await syncPending(); // within 900s window — still blocked
+  expect(result.skipped).toBe(true);
+
+  now = lastFailureTime + 901_000; // past 900s
+  const result2 = await syncPending();
+  expect(result2.skipped).toBeUndefined();
+  jest.restoreAllMocks();
+});
+
+test('syncPending resets backoff to zero after a fully successful cycle', async () => {
+  let now = 1_000_000;
+  jest.spyOn(Date, 'now').mockImplementation(() => now);
+  (getPendingObservations as jest.Mock).mockReturnValue([fakeRow()]);
+  (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 500 });
+
+  await syncPending(); // backoff = 30s
+
+  now += 31_000; // advance past backoff
+  (getPendingObservations as jest.Mock).mockReturnValue([fakeRow()]);
+  (global.fetch as jest.Mock).mockResolvedValue({ ok: true }); // success
+
+  await syncPending(); // succeeds → resets backoff
+
+  // immediately after success: no backoff window
+  const result = await syncPending();
+  expect(result.skipped).toBeUndefined();
+  jest.restoreAllMocks();
+});
+
+test('syncPending increments retry_count on transient failure', async () => {
+  const obs = fakeObs();
+  (getPendingObservations as jest.Mock).mockReturnValue([fakeRow(obs)]);
+  (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 500 });
+
+  await syncPending();
+
+  expect(incrementRetryCount).toHaveBeenCalledWith(obs.id);
+  expect(markSynced).not.toHaveBeenCalled();
+});
+
+test('syncPending permanently discards and reports error when retry cap is reached', async () => {
+  const obs = fakeObs();
+  (getPendingObservations as jest.Mock).mockReturnValue([fakeRow(obs)]);
+  (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 500 });
+  incrementRetryCount.mockReturnValue(5); // cap reached on this increment
+
+  const result = await syncPending();
+
+  expect(markSynced).toHaveBeenCalledWith(obs.id);
+  expect(result.errors[0]).toContain(obs.id);
+  expect(result.failed).toBe(1);
 });
 
 // ─── syncHierarchy ───────────────────────────────────────────────────────────

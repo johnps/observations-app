@@ -1,4 +1,4 @@
-import { initDB, queueObservation, getPendingObservations, markSynced, cacheHierarchy, getCachedFieldWorkers, getCachedVillages } from '../lib/db';
+import { initDB, queueObservation, getPendingObservations, markSynced, cacheHierarchy, getCachedFieldWorkers, getCachedVillages, incrementRetryCount, MAX_RETRIES } from '../lib/db';
 
 jest.mock('expo-sqlite');
 
@@ -66,4 +66,20 @@ test('cacheHierarchy does not affect entries for other block leads', () => {
 
   expect(getCachedFieldWorkers('a@test.com')).toEqual(['Worker A2']);
   expect(getCachedFieldWorkers('b@test.com')).toEqual(['Worker B']);
+});
+
+test('incrementRetryCount increments and returns the new count', () => {
+  queueObservation({ id: 'retry-1', text: 't', field_worker_name: 'W', village_name: 'V', block_lead_email: 'e@e.com', photo_uris: [], submitted_at: '2024-01-01T00:00:00Z' });
+  expect(incrementRetryCount('retry-1')).toBe(1);
+  expect(incrementRetryCount('retry-1')).toBe(2);
+});
+
+test('getPendingObservations excludes observations that have reached MAX_RETRIES', () => {
+  queueObservation({ id: 'good', text: 't', field_worker_name: 'W', village_name: 'V', block_lead_email: 'e@e.com', photo_uris: [], submitted_at: '2024-01-01T00:00:00Z' });
+  queueObservation({ id: 'exhausted', text: 't', field_worker_name: 'W', village_name: 'V', block_lead_email: 'e@e.com', photo_uris: [], submitted_at: '2024-01-01T00:00:00Z' });
+
+  for (let i = 0; i < MAX_RETRIES; i++) incrementRetryCount('exhausted');
+
+  const pending = getPendingObservations();
+  expect(pending.map(o => o.id)).toEqual(['good']);
 });
