@@ -62,3 +62,16 @@ beforeEach(() => {
 ```
 
 Do not revert to top-level imports for `sync` or `db` in this file — the lock state would persist across tests.
+
+## Jest mocks for ES default exports — must include `__esModule: true`
+
+When mocking a module that uses a default export (e.g. `import NetInfo from '@react-native-community/netinfo'`), the factory **must** include `__esModule: true`. Without it, Babel's `_interopRequireDefault` wraps the returned object again, making the default export one level deeper than expected and all properties `undefined` at runtime.
+
+```typescript
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: { fetch: jest.fn().mockResolvedValue({ isConnected: true }) },
+}));
+```
+
+Without `__esModule: true`, `NetInfo.fetch` resolves to `undefined` and every call throws `TypeError: _netinfo.default.fetch is not a function`.
