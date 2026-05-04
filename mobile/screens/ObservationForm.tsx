@@ -111,7 +111,9 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
 
   async function addPhoto(uri: string, width: number) {
     const context = ImageManipulator.manipulate(uri);
-    context.resize({ width: Math.min(width, 1280) });
+    // width can be 0 on Android when the system doesn't provide dimensions;
+    // passing 0 to the native resize throws an IllegalArgumentException.
+    context.resize({ width: width > 0 ? Math.min(width, 1280) : 1280 });
     const ref = await context.renderAsync();
     const resized = await ref.saveAsync({ compress: 0.8, format: SaveFormat.JPEG });
     const filename = `photo_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
@@ -132,7 +134,8 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
     const { uri, width } = result.assets[0];
     try {
       await addPhoto(uri, width);
-    } catch {
+    } catch (err) {
+      console.error('[photo-process] gallery:', err);
       setPhotoError('Could not process photo — please try again.');
     }
   }
@@ -148,7 +151,8 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
     const { uri, width } = result.assets[0];
     try {
       await addPhoto(uri, width);
-    } catch {
+    } catch (err) {
+      console.error('[photo-process] camera:', err);
       setPhotoError('Could not process photo — please try again.');
     }
   }

@@ -218,6 +218,36 @@ test('shows error below photos when camera processing fails', async () => {
   expect(await findByText(/could not process photo/i)).toBeTruthy();
 });
 
+test('handles width=0 from camera (Android may not provide dimensions)', async () => {
+  // expo-image-picker docs: "Can be 0 if the system did not provide the width"
+  // Android native bitmap creation throws on width=0; this test simulates that.
+  const ImagePicker = require('expo-image-picker');
+  const { ImageManipulator } = require('expo-image-manipulator');
+  ImagePicker.launchCameraAsync.mockResolvedValue({
+    canceled: false,
+    assets: [{ uri: 'file:///camera.jpg', width: 0, height: 0 }],
+  });
+  ImageManipulator.manipulate.mockReturnValue({
+    resize: jest.fn().mockImplementation(({ width }) => {
+      if (width === 0) throw new Error('width must be > 0');
+      return { resize: jest.fn().mockReturnThis(), renderAsync: jest.fn().mockResolvedValue({ saveAsync: jest.fn().mockResolvedValue({ uri: 'file:///resized.jpg' }) }) };
+    }),
+    renderAsync: jest.fn().mockResolvedValue({
+      saveAsync: jest.fn().mockResolvedValue({ uri: 'file:///resized.jpg' }),
+    }),
+  });
+
+  const { getByText, queryByText } = render(
+    <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
+  );
+  await waitFor(() => getByText(/take photo/i));
+  fireEvent.press(getByText(/take photo/i));
+  await waitFor(() => {
+    expect(queryByText(/could not process photo/i)).toBeNull();
+    expect(getByText(/photos \(1/i)).toBeTruthy();
+  });
+});
+
 test('shows error below photos when gallery processing fails', async () => {
   const ImagePicker = require('expo-image-picker');
   const { ImageManipulator } = require('expo-image-manipulator');
