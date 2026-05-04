@@ -25,7 +25,7 @@ jest.mock('expo-image-picker', () => ({
 }));
 
 jest.mock('expo-image-manipulator', () => ({
-  manipulateAsync: jest.fn(),
+  ImageManipulator: { manipulate: jest.fn() },
   SaveFormat: { JPEG: 'jpeg' },
 }));
 
@@ -50,6 +50,14 @@ beforeEach(() => {
   mockGoBack.mockClear();
   (queueObservation as jest.Mock).mockClear();
   (syncPending as jest.Mock).mockResolvedValue({ synced: 1, failed: 0, errors: [] });
+  // Default: photo processing succeeds
+  const { ImageManipulator } = require('expo-image-manipulator');
+  ImageManipulator.manipulate.mockReturnValue({
+    resize: jest.fn().mockReturnThis(),
+    renderAsync: jest.fn().mockResolvedValue({
+      saveAsync: jest.fn().mockResolvedValue({ uri: 'file:///resized.jpg' }),
+    }),
+  });
   // Reset location mock so GPS-hang tests don't contaminate subsequent tests
   const Location = require('expo-location');
   Location.getCurrentPositionAsync.mockResolvedValue({ coords: { latitude: 26.9, longitude: 75.8 } });
@@ -130,12 +138,10 @@ test('camera button is visible', async () => {
 
 test('take photo button calls launchCameraAsync', async () => {
   const ImagePicker = require('expo-image-picker');
-  const ImageManipulator = require('expo-image-manipulator');
   ImagePicker.launchCameraAsync.mockResolvedValue({
     canceled: false,
     assets: [{ uri: 'file:///camera.jpg', width: 1920, height: 1080 }],
   });
-  ImageManipulator.manipulateAsync.mockResolvedValue({ uri: 'file:///camera_resized.jpg' });
 
   const { getByText } = render(
     <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
@@ -199,12 +205,15 @@ test('tapping village picker after worker selection shows villages', async () =>
 
 test('shows error below photos when camera processing fails', async () => {
   const ImagePicker = require('expo-image-picker');
-  const ImageManipulator = require('expo-image-manipulator');
+  const { ImageManipulator } = require('expo-image-manipulator');
   ImagePicker.launchCameraAsync.mockResolvedValue({
     canceled: false,
     assets: [{ uri: 'file:///camera.jpg', width: 1920, height: 1080 }],
   });
-  ImageManipulator.manipulateAsync.mockRejectedValue(new Error('Processing failed'));
+  ImageManipulator.manipulate.mockReturnValue({
+    resize: jest.fn().mockReturnThis(),
+    renderAsync: jest.fn().mockRejectedValue(new Error('Processing failed')),
+  });
 
   const { getByText, findByText } = render(
     <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
@@ -216,12 +225,15 @@ test('shows error below photos when camera processing fails', async () => {
 
 test('shows error below photos when gallery processing fails', async () => {
   const ImagePicker = require('expo-image-picker');
-  const ImageManipulator = require('expo-image-manipulator');
+  const { ImageManipulator } = require('expo-image-manipulator');
   ImagePicker.launchImageLibraryAsync.mockResolvedValue({
     canceled: false,
     assets: [{ uri: 'file:///gallery.jpg', width: 2000, height: 1500 }],
   });
-  ImageManipulator.manipulateAsync.mockRejectedValue(new Error('Processing failed'));
+  ImageManipulator.manipulate.mockReturnValue({
+    resize: jest.fn().mockReturnThis(),
+    renderAsync: jest.fn().mockRejectedValue(new Error('Processing failed')),
+  });
 
   const { getByText, findByText } = render(
     <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
@@ -233,14 +245,22 @@ test('shows error below photos when gallery processing fails', async () => {
 
 test('photo error clears on next successful attempt', async () => {
   const ImagePicker = require('expo-image-picker');
-  const ImageManipulator = require('expo-image-manipulator');
+  const { ImageManipulator } = require('expo-image-manipulator');
   ImagePicker.launchCameraAsync.mockResolvedValue({
     canceled: false,
     assets: [{ uri: 'file:///camera.jpg', width: 1920, height: 1080 }],
   });
-  ImageManipulator.manipulateAsync
-    .mockRejectedValueOnce(new Error('Processing failed'))
-    .mockResolvedValueOnce({ uri: 'file:///camera_resized.jpg' });
+  ImageManipulator.manipulate
+    .mockReturnValueOnce({
+      resize: jest.fn().mockReturnThis(),
+      renderAsync: jest.fn().mockRejectedValue(new Error('Processing failed')),
+    })
+    .mockReturnValueOnce({
+      resize: jest.fn().mockReturnThis(),
+      renderAsync: jest.fn().mockResolvedValue({
+        saveAsync: jest.fn().mockResolvedValue({ uri: 'file:///camera_resized.jpg' }),
+      }),
+    });
 
   const { getByText, findByText, queryByText } = render(
     <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
@@ -258,12 +278,11 @@ test('photo error clears on next successful attempt', async () => {
 
 test('submitting includes photo_uris when photos are selected', async () => {
   const ImagePicker = require('expo-image-picker');
-  const ImageManipulator = require('expo-image-manipulator');
+  const { ImageManipulator } = require('expo-image-manipulator');
   ImagePicker.launchImageLibraryAsync.mockResolvedValue({
     canceled: false,
     assets: [{ uri: 'file:///photo1.jpg', width: 2000, height: 1500 }],
   });
-  ImageManipulator.manipulateAsync.mockResolvedValue({ uri: 'file:///photo1_resized.jpg' });
 
   const { getByPlaceholderText, getByText, getByTestId } = render(
     <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
@@ -271,7 +290,7 @@ test('submitting includes photo_uris when photos are selected', async () => {
   await selectWorkerAndVillage(getByTestId, getByText);
 
   fireEvent.press(getByText(/attach photo/i));
-  await waitFor(() => expect(ImageManipulator.manipulateAsync).toHaveBeenCalled());
+  await waitFor(() => expect(ImageManipulator.manipulate).toHaveBeenCalled());
 
   fireEvent.changeText(getByPlaceholderText(/observation/i), 'With photo');
   fireEvent.press(getByText('Submit'));

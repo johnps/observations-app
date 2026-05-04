@@ -9,7 +9,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../App';
 import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import { v4 as uuidv4 } from 'uuid';
 import { queueObservation, getCachedFieldWorkers, getCachedVillages } from '../lib/db';
@@ -136,11 +136,10 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
   }, [selectedWorker, blockLeadEmail]);
 
   async function addPhoto(uri: string, width: number) {
-    const resized = await ImageManipulator.manipulateAsync(
-      uri,
-      [{ resize: { width: Math.min(width, 1280) } }],
-      { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
-    );
+    const context = ImageManipulator.manipulate(uri);
+    context.resize({ width: Math.min(width, 1280) });
+    const ref = await context.renderAsync();
+    const resized = await ref.saveAsync({ compress: 0.8, format: SaveFormat.JPEG });
     const filename = `photo_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
     const destUri = `${FileSystem.documentDirectory}obs_photos/${filename}`;
     await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory}obs_photos`, { intermediates: true });
@@ -223,13 +222,13 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
       setSubmitting(false);
       return;
     }
-    const result = await syncPending();
     setSubmitting(false);
     navigation.navigate('BlockLeadHome', {
       email: blockLeadEmail,
       justSubmitted: true,
-      wasSynced: result.synced > 0,
+      wasSynced: false,
     });
+    syncPending(); // fire and forget — home screen refreshes counts on focus
   }
 
   return (
