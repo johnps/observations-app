@@ -50,6 +50,26 @@ ImageManipulator.manipulate.mockReturnValue({
 });
 ```
 
+## Sideloading APKs via ADB
+
+Build locally when the EAS free plan monthly Android build limit is exhausted:
+```
+eas build --platform android --profile apk --local
+```
+
+Install with:
+```
+adb install -r <path-to-apk>
+```
+
+**If `adb install` silently stalls** (no progress, no dialog on phone), restart the ADB server:
+```
+adb kill-server && adb start-server
+adb install -r <path-to-apk>
+```
+
+Samsung devices may show a Knox security scan prompt during install — dismiss or send it, the install proceeds either way.
+
 ## Debugging lessons learned
 
 **Check device logs before hypothesizing.** When a bug survives multiple fix attempts, run `adb logcat | grep '[your-log-tag]'` before touching any code. The real error is almost always there. Every fix attempt without checking logs first is a guess.
