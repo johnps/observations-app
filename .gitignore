@@ -1,13 +1,5 @@
-# Environment files — never commit these
-web/.env.local
-web/.env*.local
-mobile/.env
-mobile/.env.local
-
-# Dependencies
+# Dependencies (subdirs handle their own node_modules too)
 node_modules/
-web/node_modules/
-mobile/node_modules/
 
 # Next.js
 web/.next/
