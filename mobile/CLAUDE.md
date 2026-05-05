@@ -1,8 +1,20 @@
 # Mobile — Developer Notes
 
+## expo-file-system v19 (Expo SDK 54+)
+
+All legacy API methods (`makeDirectoryAsync`, `copyAsync`, `deleteAsync`, etc.) imported from `"expo-file-system"` now **throw at runtime** with:
+
+```
+Method X imported from "expo-file-system" is deprecated.
+```
+
+Use the new class-based API (`File`, `Directory`, `Paths`) or import from `"expo-file-system/legacy"`. This was the root cause of persistent "Could not process photo" errors across multiple builds — the throw was swallowed by a generic `catch` in `addPhoto`, making it look like an image manipulator failure.
+
+The legacy import from `"expo-file-system/legacy"` still works but is not recommended for new code.
+
 ## expo-image-manipulator v14 (Expo SDK 54+)
 
-`manipulateAsync` is deprecated and broken in the native module on device — it will throw silently, resulting in "Could not process photo" errors. Do not use it.
+`manipulateAsync` is deprecated and broken in the native module on device — do not use it.
 
 The correct API is:
 
@@ -37,6 +49,12 @@ ImageManipulator.manipulate.mockReturnValue({
   }),
 });
 ```
+
+## Debugging lessons learned
+
+**Check device logs before hypothesizing.** When a bug survives multiple fix attempts, run `adb logcat | grep '[your-log-tag]'` before touching any code. The real error is almost always there. Every fix attempt without checking logs first is a guess.
+
+**Generic catch blocks mask the real error.** "Could not process photo" and similar user-facing strings are produced by catch blocks that discard the original exception. Before diagnosing, find the catch, confirm it logs `err`, and read the real message. A bug that looks like an image manipulator failure may be a filesystem failure one layer deeper.
 
 ## sync.test.ts — jest.resetModules() pattern
 

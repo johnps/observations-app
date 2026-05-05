@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import { File } from 'expo-file-system';
 import NetInfo from '@react-native-community/netinfo';
 import { getPendingObservations, markSynced, cacheHierarchy, incrementRetryCount, MAX_RETRIES } from './db';
 import { uploadPhoto } from './storage';
@@ -65,13 +65,13 @@ export async function syncPending(): Promise<SyncResult> {
 
         if (res.ok) {
           for (const uri of photoUris) {
-            try { await FileSystem.deleteAsync(uri, { idempotent: true }); } catch {}
+            try { new File(uri).delete(); } catch {}
           }
           markSynced(obs.id);
           synced++;
         } else if (res.status === 400) {
           for (const uri of photoUris) {
-            try { await FileSystem.deleteAsync(uri, { idempotent: true }); } catch {}
+            try { new File(uri).delete(); } catch {}
           }
           const body = await res.json().catch(() => ({}));
           errors.push(`Discarded observation ${obs.id}: ${body.error ?? 'invalid data'}`);

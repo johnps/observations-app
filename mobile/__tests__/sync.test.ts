@@ -13,8 +13,9 @@ jest.mock('../lib/storage', () => ({
   uploadPhoto: jest.fn(),
 }));
 
+const mockFileDelete = jest.fn();
 jest.mock('expo-file-system', () => ({
-  deleteAsync: jest.fn().mockResolvedValue(undefined),
+  File: jest.fn().mockImplementation(() => ({ delete: mockFileDelete })),
 }));
 
 jest.mock('@react-native-community/netinfo', () => ({
@@ -126,7 +127,7 @@ test('syncPending stays in queue when server returns 500 (non-UUID id was the ro
 });
 
 test('syncPending discards observation and deletes photos on 400', async () => {
-  const FileSystem = require('expo-file-system');
+  const { File } = require('expo-file-system');
   const obs = fakeObs({ photo_uris: ['file:///docs/obs_photos/a.jpg'] });
   (getPendingObservations as jest.Mock).mockReturnValue([fakeRow(obs)]);
   (uploadPhoto as jest.Mock).mockResolvedValue('https://cdn.example.com/a.jpg');
@@ -137,7 +138,8 @@ test('syncPending discards observation and deletes photos on 400', async () => {
 
   const result = await syncPending();
 
-  expect(FileSystem.deleteAsync).toHaveBeenCalledWith('file:///docs/obs_photos/a.jpg', { idempotent: true });
+  expect(File).toHaveBeenCalledWith('file:///docs/obs_photos/a.jpg');
+  expect(mockFileDelete).toHaveBeenCalled();
   expect(markSynced).toHaveBeenCalledWith(obs.id);
   expect(result).toMatchObject({ synced: 0, failed: 1 });
   expect(result.errors[0]).toContain('missing field');
@@ -193,7 +195,7 @@ test('syncPending uploads photos then includes photo_urls and omits photo_uris i
 });
 
 test('syncPending deletes local photo files after successful sync', async () => {
-  const FileSystem = require('expo-file-system');
+  const { File } = require('expo-file-system');
   const obs = fakeObs({ photo_uris: ['file:///docs/obs_photos/x.jpg'] });
   (getPendingObservations as jest.Mock).mockReturnValue([fakeRow(obs)]);
   (uploadPhoto as jest.Mock).mockResolvedValue('https://cdn.example.com/x.jpg');
@@ -201,7 +203,8 @@ test('syncPending deletes local photo files after successful sync', async () => 
 
   await syncPending();
 
-  expect(FileSystem.deleteAsync).toHaveBeenCalledWith('file:///docs/obs_photos/x.jpg', { idempotent: true });
+  expect(File).toHaveBeenCalledWith('file:///docs/obs_photos/x.jpg');
+  expect(mockFileDelete).toHaveBeenCalled();
 });
 
 test('syncPending stays in queue when photo upload fails', async () => {

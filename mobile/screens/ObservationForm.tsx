@@ -7,7 +7,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../App';
-import * as FileSystem from 'expo-file-system';
+import { File, Directory, Paths } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as Location from 'expo-location';
@@ -117,10 +117,11 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
     const ref = await context.renderAsync();
     const resized = await ref.saveAsync({ compress: 0.8, format: SaveFormat.JPEG });
     const filename = `photo_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
-    const destUri = `${FileSystem.documentDirectory}obs_photos/${filename}`;
-    await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory}obs_photos`, { intermediates: true });
-    await FileSystem.copyAsync({ from: resized.uri, to: destUri });
-    setPhotoUris(prev => [...prev, destUri]);
+    const obsPhotosDir = new Directory(Paths.document, 'obs_photos');
+    obsPhotosDir.create({ intermediates: true, idempotent: true });
+    const destFile = new File(obsPhotosDir, filename);
+    new File(resized.uri).copy(destFile);
+    setPhotoUris(prev => [...prev, destFile.uri]);
   }
 
   async function handlePickPhoto() {

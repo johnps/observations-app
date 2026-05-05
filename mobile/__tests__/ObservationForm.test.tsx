@@ -38,10 +38,16 @@ jest.mock('expo-location', () => ({
 }));
 
 jest.mock('expo-file-system', () => ({
-  documentDirectory: 'file:///documents/',
-  makeDirectoryAsync: jest.fn().mockResolvedValue(undefined),
-  copyAsync: jest.fn().mockResolvedValue(undefined),
-  deleteAsync: jest.fn().mockResolvedValue(undefined),
+  File: jest.fn().mockImplementation(() => ({
+    copy: jest.fn(),
+    delete: jest.fn(),
+    uri: 'file:///documents/obs_photos/photo_test.jpg',
+  })),
+  Directory: jest.fn().mockImplementation(() => ({
+    create: jest.fn(),
+    uri: 'file:///documents/obs_photos/',
+  })),
+  Paths: { document: { uri: 'file:///documents/' } },
 }));
 
 const WORKERS = ['Worker One', 'Worker Two'];
