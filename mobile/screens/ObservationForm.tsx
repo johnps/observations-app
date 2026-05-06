@@ -159,7 +159,7 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
   }
 
   async function handleSubmit() {
-    if (!observationText.trim()) return;
+    if (!observationText.trim()) { setSubmitError('Please write an observation.'); return; }
     if (!selectedWorker) { setSubmitError('Please select a field worker.'); return; }
     if (!selectedVillage) { setSubmitError('Please select a village.'); return; }
     setSubmitting(true);
