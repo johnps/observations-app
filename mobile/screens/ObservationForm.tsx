@@ -165,23 +165,19 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
     setSubmitting(true);
     setSubmitError('');
     const id = uuidv4();
+    console.log('[submit] start', id);
 
     let gps_lat: number | undefined;
     let gps_lng: number | undefined;
-    let gpsTimer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const loc = await Promise.race([
-        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-        new Promise<never>((_, reject) => {
-          gpsTimer = setTimeout(() => reject(new Error('GPS timeout')), 5_000);
-        }),
-      ]);
-      gps_lat = loc.coords.latitude;
-      gps_lng = loc.coords.longitude;
-    } catch {
-      // permission denied, unavailable, or timed out — submit without GPS
-    } finally {
-      clearTimeout(gpsTimer);
+      const loc = await Location.getLastKnownPositionAsync({ maxAge: 300_000 });
+      console.log('[submit] gps done', loc ? 'got fix' : 'no fix');
+      if (loc) {
+        gps_lat = loc.coords.latitude;
+        gps_lng = loc.coords.longitude;
+      }
+    } catch (err) {
+      console.log('[submit] gps error', String(err));
     }
 
     try {
@@ -196,18 +192,23 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
         gps_lng,
         submitted_at: new Date().toISOString(),
       };
+      console.log('[submit] queuing');
       queueObservation(obs);
-    } catch {
+      console.log('[submit] queued ok');
+    } catch (err) {
+      console.log('[submit] queue error', String(err));
       setSubmitError('Could not save observation — device may be out of storage.');
       setSubmitting(false);
       return;
     }
+    console.log('[submit] navigating');
     setSubmitting(false);
     navigation.navigate('BlockLeadHome', {
       email: blockLeadEmail,
       justSubmitted: true,
       wasSynced: false,
     });
+    console.log('[submit] done');
     syncPending(); // fire and forget — home screen refreshes counts on focus
   }
 
