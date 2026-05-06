@@ -12,7 +12,7 @@ import MyObservations from './screens/MyObservations';
 
 export type RootStackParamList = {
   Login: undefined;
-  BlockLeadHome: { email: string; justSubmitted?: boolean; wasSynced?: boolean };
+  BlockLeadHome: { email: string; submitKey?: number; isOnline?: boolean };
   ObservationForm: { email: string };
   MyObservations: { email: string };
 };
@@ -20,13 +20,14 @@ export type RootStackParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 
-function BlockLeadHomeScreen({ route }: { route: { params: { email: string; justSubmitted?: boolean; wasSynced?: boolean } } }) {
+function BlockLeadHomeScreen({ route }: { route: { params: { email: string; submitKey?: number; isOnline?: boolean } } }) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { email, justSubmitted, wasSynced } = route.params;
+  const { email, submitKey, isOnline } = route.params;
   const [banner, setBanner] = useState('');
   const [pendingCount, setPendingCount] = useState(0);
   const [syncedCount, setSyncedCount] = useState<number | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState('');
 
   const loadCounts = useCallback(async () => {
     setPendingCount(getPendingObservations().length);
@@ -39,21 +40,34 @@ function BlockLeadHomeScreen({ route }: { route: { params: { email: string; just
     } catch { /* offline — leave synced count as-is */ }
   }, [email]);
 
-  useFocusEffect(useCallback(() => { loadCounts(); }, [loadCounts]));
+  // Full count refresh (including API) on focus; local pending count polls every 3s so
+  // background syncs (AppState, NetInfo, post-submit) are reflected without manual tap.
+  useFocusEffect(useCallback(() => {
+    loadCounts();
+    const id = setInterval(() => setPendingCount(getPendingObservations().length), 3_000);
+    return () => clearInterval(id);
+  }, [loadCounts]));
 
+  // submitKey is a timestamp — unique per submission, so this always re-fires.
   useEffect(() => {
-    if (justSubmitted) {
-      setBanner(wasSynced ? '✓ Observation submitted' : '⏳ Saved offline — will sync when connected');
-      const t = setTimeout(() => setBanner(''), 4000);
-      return () => clearTimeout(t);
-    }
-  }, [justSubmitted, wasSynced]);
+    if (!submitKey) return;
+    setBanner(isOnline ? '✓ Saved — syncing in background' : '⏳ Saved offline — will sync when connected');
+    const t = setTimeout(() => setBanner(''), 4000);
+    return () => clearTimeout(t);
+  }, [submitKey, isOnline]);
 
   async function handleSync() {
     setSyncing(true);
-    await syncPending();
-    await loadCounts();
-    setSyncing(false);
+    setSyncError('');
+    try {
+      const result = await syncPending();
+      await loadCounts();
+      if (result.failed > 0) {
+        setSyncError(`${result.failed} observation${result.failed > 1 ? 's' : ''} failed to sync — will retry automatically.`);
+      }
+    } finally {
+      setSyncing(false);
+    }
   }
 
   async function handleSignOut() {
@@ -67,8 +81,8 @@ function BlockLeadHomeScreen({ route }: { route: { params: { email: string; just
       <Text style={styles.email}>{email}</Text>
 
       {banner ? (
-        <View style={[styles.banner, wasSynced ? styles.bannerSynced : styles.bannerPending]}>
-          <Text style={[styles.bannerText, wasSynced ? styles.bannerTextSynced : styles.bannerTextPending]}>
+        <View style={[styles.banner, isOnline ? styles.bannerSynced : styles.bannerPending]}>
+          <Text style={[styles.bannerText, isOnline ? styles.bannerTextSynced : styles.bannerTextPending]}>
             {banner}
           </Text>
         </View>
@@ -93,6 +107,7 @@ function BlockLeadHomeScreen({ route }: { route: { params: { email: string; just
             : <Text style={styles.syncButtonText}>Sync now</Text>}
         </TouchableOpacity>
       )}
+      {syncError ? <Text style={styles.syncError}>{syncError}</Text> : null}
 
       <TouchableOpacity
         style={styles.primaryButton}
@@ -192,6 +207,7 @@ const styles = StyleSheet.create({
   statDivider: { width: 1, height: 32, backgroundColor: '#e5e7eb' },
   syncButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 20, minWidth: 100, minHeight: 36 },
   syncButtonText: { fontSize: 13, color: '#374151', fontWeight: '500' },
+  syncError: { fontSize: 13, color: '#dc2626', textAlign: 'center', maxWidth: 280 },
   primaryButton: { width: 240, backgroundColor: '#111827', paddingVertical: 14, paddingHorizontal: 24, borderRadius: 8 },
   primaryButtonText: { color: '#fff', fontWeight: '600', textAlign: 'center' },
   secondaryButton: { width: 240, borderWidth: 1, borderColor: '#e5e7eb', paddingVertical: 14, paddingHorizontal: 24, borderRadius: 8 },

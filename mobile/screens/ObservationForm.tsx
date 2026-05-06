@@ -5,6 +5,7 @@ import {
   Modal, FlatList, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import NetInfo from '@react-native-community/netinfo';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../App';
 import { File, Directory, Paths } from 'expo-file-system';
@@ -201,15 +202,16 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
       setSubmitting(false);
       return;
     }
+    const { isConnected } = await NetInfo.fetch();
     console.log('[submit] navigating');
     setSubmitting(false);
     navigation.navigate('BlockLeadHome', {
       email: blockLeadEmail,
-      justSubmitted: true,
-      wasSynced: false,
+      submitKey: Date.now(),
+      isOnline: isConnected ?? false,
     });
     console.log('[submit] done');
-    syncPending(); // fire and forget — home screen refreshes counts on focus
+    syncPending(); // fire and forget — home screen polls pending count and will reflect result
   }
 
   return (
