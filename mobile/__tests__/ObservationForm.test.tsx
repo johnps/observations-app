@@ -19,6 +19,10 @@ jest.mock('../lib/useHierarchy', () => ({
 }));
 jest.mock('../lib/sync', () => ({ syncPending: jest.fn().mockResolvedValue({ synced: 1, failed: 0, errors: [] }) }));
 
+jest.mock('expo-crypto', () => ({
+  randomUUID: jest.fn(() => 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'),
+}));
+
 jest.mock('@react-native-community/netinfo', () => ({
   __esModule: true,
   default: {

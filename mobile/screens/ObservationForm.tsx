@@ -12,7 +12,7 @@ import { File, Directory, Paths } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as Location from 'expo-location';
-import { v4 as uuidv4 } from 'uuid';
+import * as Crypto from 'expo-crypto';
 import { queueObservation } from '../lib/db';
 import type { PendingObservation } from '../types/observation';
 import { syncPending } from '../lib/sync';
@@ -170,7 +170,7 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
     if (!selectedVillage) { setSubmitError('Please select a village.'); return; }
     setSubmitting(true);
     setSubmitError('');
-    const id = uuidv4();
+    const id = Crypto.randomUUID();
     console.log('[submit] start', id);
 
     let gps_lat: number | undefined;
