@@ -21,7 +21,10 @@ jest.mock('../lib/sync', () => ({ syncPending: jest.fn().mockResolvedValue({ syn
 
 jest.mock('@react-native-community/netinfo', () => ({
   __esModule: true,
-  default: { fetch: jest.fn().mockResolvedValue({ isConnected: true }) },
+  default: {
+    fetch: jest.fn().mockResolvedValue({ isConnected: true }),
+    addEventListener: jest.fn().mockReturnValue(() => {}),
+  },
 }));
 
 jest.mock('expo-image-picker', () => ({

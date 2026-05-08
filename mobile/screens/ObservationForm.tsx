@@ -103,11 +103,16 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [photoError, setPhotoError] = useState('');
+  const [isConnected, setIsConnected] = useState(true);
 
   const { fieldWorkers, villages } = useHierarchy(blockLeadEmail, selectedWorker);
 
   useEffect(() => {
     Location.requestForegroundPermissionsAsync();
+    const unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
+      setIsConnected(state.isConnected ?? true);
+    });
+    return unsubscribe;
   }, []);
 
   async function addPhoto(uri: string, width: number) {
@@ -202,13 +207,11 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
       setSubmitting(false);
       return;
     }
-    const { isConnected } = await NetInfo.fetch();
-    console.log('[submit] navigating');
     setSubmitting(false);
     navigation.navigate('BlockLeadHome', {
       email: blockLeadEmail,
       submitKey: Date.now(),
-      isOnline: isConnected ?? false,
+      isOnline: isConnected,
     });
     console.log('[submit] done');
     syncPending(); // fire and forget — home screen polls pending count and will reflect result
