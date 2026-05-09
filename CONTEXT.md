@@ -95,7 +95,7 @@ Technical or programme management staff. Sets up and maintains the system: uploa
 
 **Device:** Block leads use Android smartphones. The app is Android-only for now.
 
-**GPS accuracy:** GPS coordinates are captured at the time of observation submission. Village-level GPS coordinates are not available from a preloaded dataset and inference from accumulated observations is post-MVP.
+**GPS acquisition:** `getCurrentPositionAsync` is called on form mount (not at submit time) so the fix has time to resolve while the block lead fills in the form. A status indicator shows "Acquiring GPS…" → "GPS acquired" or "GPS unavailable — observation will be submitted without location." Submit is never blocked by GPS status. The GPS position is held in a `useRef` (no re-render on update); the status string is held in `useState` (triggers the indicator re-render). Village-level GPS coordinates are not available from a preloaded dataset and inference from accumulated observations is post-MVP.
 
 **Hierarchy sync:** The Android app silently pulls the latest field worker → village mapping on every app launch when online. No manual sync step. Stale data risk is limited to block leads who launch the app while offline without having opened it since a hierarchy change.
 
@@ -129,6 +129,10 @@ Google SSO is live via Supabase Auth (PKCE flow). The login page calls `supabase
 Roles are assigned manually by an admin in `/admin/users`. There is no invite flow — users can attempt to sign in at any time, but they see "no access" until an admin assigns them a role.
 
 The placeholder auth (four hard-coded buttons) has been removed. The placeholder DB accounts (`test-*@placeholder.local`) can be deleted.
+
+**Session-based role verification on pages:** The district lead and state lead pages verify the authenticated session on mount via `getSessionRole()` (`web/lib/getSessionRole.ts`), which calls `supabase.auth.getSession()` and then `/api/users/role`. Both pages redirect to `/` if the session is absent or the role doesn't match. District lead's district filter is derived entirely from their session — it is never passed in the URL. This prevents a mutable district name in the URL from becoming a stale routing key.
+
+**State lead drill-down:** When a state lead clicks a district bar, the URL includes `?from=state-lead`. The district observations page only shows the "← State Overview" back link when this param is present. District leads logging in directly never see it.
 
 ## Sync model
 

@@ -39,6 +39,37 @@ jest.mock('@anthropic-ai/sdk', () => {
 });
 ```
 
+## Session-based role verification — `getSessionRole`
+
+`web/lib/getSessionRole.ts` exports a single async function:
+
+```typescript
+getSessionRole(): Promise<{ role: string | null; district_name: string | null }>
+```
+
+It calls `supabase.auth.getSession()` then fetches `/api/users/role`. All failure paths (no session, non-ok response, fetch throws) return `{ role: null, district_name: null }` — callers treat null role as unauthenticated and redirect to `/`.
+
+Use this in client pages that need to verify role on mount:
+
+```typescript
+useEffect(() => {
+  getSessionRole().then(({ role, district_name }) => {
+    if (role !== 'district_lead') { router.replace('/'); return; }
+    setSessionDistrict(district_name);
+  });
+}, [router]);
+```
+
+**District lead page:** derives its `districtFilter` from the session, not the URL. The URL never carries a district name for district leads — it is a mutable string that would break if an admin renames the district.
+
+**State lead page:** verifies role on mount; redirects to `/` if role is not `state_lead`; renders `null` until auth is confirmed.
+
+## State lead drill-down navigation
+
+`/state-lead/district/[district]/page.tsx` redirects to `/district-lead/observations?district=<name>&from=state-lead`.
+
+The `from=state-lead` param tells the district observations page to use the URL's `district` param (the state lead's explicit choice) and to render the "← State Overview" back link. Without `from=state-lead`, the page ignores the URL district and derives it from the session instead.
+
 ## Tagging endpoint — district scoping
 
 `POST /api/observations/tag` accepts an optional `district` query param:

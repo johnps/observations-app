@@ -51,7 +51,7 @@ Roles are assigned manually by an admin in the webapp. Users log in via Google S
 4. Block lead attaches one or more photos from their camera.
 5. Block lead selects the field worker from a dropdown (showing only field workers assigned to this block lead).
 6. Village dropdown refreshes to show only villages mapped to the selected field worker. Block lead selects the village.
-7. App silently captures GPS coordinates and timestamp in the background.
+7. App begins acquiring GPS on form open and shows a status line near the Submit button: "Acquiring GPS…" → "GPS acquired" once a fix is obtained, or "GPS unavailable — observation will be submitted without location" if acquisition fails. Submit is never blocked by GPS status.
 8. Block lead taps "Submit."
 9. If offline, the observation is saved locally and syncs automatically when connectivity returns.
 10. If the observation repeatedly fails to sync (e.g. network errors over an extended period), it is moved to a "Failed Observations" list rather than silently discarded. The block lead is notified and can review the full content of the failed observation, then re-submit it manually.
@@ -171,7 +171,7 @@ Roles are assigned manually by an admin in the webapp. Users log in via Google S
 - Offline-first: all observations saved locally, synced when connectivity returns
 - Speech-to-text input supporting Hindi and English
 - Camera photo attachment (multiple photos per observation)
-- GPS coordinate capture on submission
+- GPS acquisition starts on form open; status indicator shown near Submit; coordinate captured at submit time from resolved fix
 - Dropdown: field worker (filtered to this block lead) → village (filtered to selected field worker)
 - Data preloaded on last sync: field worker → village mapping
 

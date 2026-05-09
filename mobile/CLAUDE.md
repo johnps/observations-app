@@ -86,9 +86,12 @@ The only fetch body type that works for binary uploads in React Native is a **na
 const fileRes = await fetchWithTimeout(uri, {});
 const blob = await fileRes.blob();
 
-// Use user session JWT — anon key fails the 'authenticated' RLS policy
+// Use user session JWT — anon key fails the 'authenticated' RLS policy.
+// getSession() is called before the blob fetch; throws if session is null
+// rather than falling back to the anon key (which always fails RLS).
 const { data: { session } } = await supabase.auth.getSession();
-const authToken = session?.access_token ?? SUPABASE_ANON_KEY;
+if (!session) throw new Error('Upload failed: no authenticated session');
+const authToken = session.access_token;
 
 const uploadRes = await fetchWithTimeout(
   `${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`,
@@ -150,6 +153,17 @@ jest.mock('@react-native-community/netinfo', () => ({
 ```
 
 Without `__esModule: true`, `NetInfo.fetch` resolves to `undefined` and every call throws `TypeError: _netinfo.default.fetch is not a function`.
+
+## GPS acquisition pattern on ObservationForm
+
+GPS is acquired **proactively on form mount**, not lazily at submit time. This gives the fix time to resolve while the block lead fills in the form, reducing the miss rate on devices with slow cold-start acquisition.
+
+`locationRef = useRef<{ latitude, longitude } | null>(null)` — holds the fix, no re-render on update.
+`gpsStatus = useState<'acquiring' | 'acquired' | 'unavailable'>('acquiring')` — drives the status indicator, triggers re-render.
+
+The mount effect calls `getCurrentPositionAsync` (not `getLastKnownPositionAsync` — the latter only reads the OS cache, which may be stale or empty). On resolve: updates `locationRef.current` and sets status to `'acquired'`. On reject or null: sets status to `'unavailable'`. Submit reads `locationRef.current?.latitude/longitude` directly — no second GPS call.
+
+The status indicator renders near the Submit button. Submit is never blocked by GPS status.
 
 ## expo-sqlite mock — `runSync` branch order matters
 
