@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
   if (!obs?.length) return NextResponse.json({ tagged: 0, total: 0 });
 
   const tagList = tagDefs.map(t => `- ${t.name}: ${t.description}`).join('\n');
-  const obsList = obs.map((o, i) => `${i + 1}. "${o.text}"`).join('\n');
+  const obsList = (obs as Array<{ id: string; text: string }>).map((o, i) => `${i + 1}. "${o.text}"`).join('\n');
 
   const message = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
