@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState, Suspense, useMemo } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { SignOutButton } from '@/components/SignOutButton';
+import { getSessionRole } from '@/lib/getSessionRole';
 
 type Observation = {
   id: string;
@@ -50,7 +51,20 @@ function ColFilter({ options, value, onChange }: { options: string[]; value: str
 
 function DistrictLeadObservationsInner() {
   const searchParams = useSearchParams();
-  const districtFilter = searchParams.get('district');
+  const router = useRouter();
+  const fromStateLead = searchParams.get('from') === 'state-lead';
+  const urlDistrict = searchParams.get('district');
+
+  const [sessionDistrict, setSessionDistrict] = useState<string | null>(null);
+  const districtFilter = fromStateLead ? urlDistrict : sessionDistrict;
+
+  useEffect(() => {
+    if (fromStateLead) return;
+    getSessionRole().then(({ role, district_name }) => {
+      if (role !== 'district_lead') { router.replace('/'); return; }
+      setSessionDistrict(district_name);
+    });
+  }, [fromStateLead, router]);
 
   const [observations, setObservations] = useState<Observation[]>([]);
   const [stats, setStats] = useState<Stat[]>([]);
@@ -88,7 +102,7 @@ function DistrictLeadObservationsInner() {
     });
   }
 
-  useEffect(() => { loadObservations(); }, [districtFilter]);
+  useEffect(() => { if (!districtFilter) return; loadObservations(); }, [districtFilter]);
 
   async function handleAutoTag() {
     if (!districtFilter) return;
@@ -102,9 +116,9 @@ function DistrictLeadObservationsInner() {
   }
 
   useEffect(() => {
+    if (!districtFilter) return;
     const base = `/api/observations/stats?dimension=${dimension}&period=${period}`;
-    const url = districtFilter ? `${base}&district=${encodeURIComponent(districtFilter)}` : base;
-    fetch(url).then(r => r.json()).then(b => setStats(b.stats ?? []));
+    fetch(`${base}&district=${encodeURIComponent(districtFilter)}`).then(r => r.json()).then(b => setStats(b.stats ?? []));
   }, [dimension, period, districtFilter]);
 
   const filtered = useMemo(() => observations.filter(o => {
@@ -132,7 +146,7 @@ function DistrictLeadObservationsInner() {
 
   return (
     <main className="p-8 max-w-7xl">
-      {districtFilter && (
+      {fromStateLead && districtFilter && (
         <p className="text-sm text-gray-500 mb-2">
           <a href="/state-lead" className="text-gray-400 hover:text-gray-700">← State Overview</a>
           {' / '}{districtFilter}

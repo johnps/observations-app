@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { getSessionRole } from '@/lib/getSessionRole';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { SignOutButton } from '@/components/SignOutButton';
 
@@ -54,6 +55,7 @@ function ColFilter({ options, value, onChange }: { options: string[]; value: str
 
 export default function StateLeadDashboard() {
   const router = useRouter();
+  const [authChecked, setAuthChecked] = useState(false);
   const [stats, setStats] = useState<Stat[]>([]);
   const [period, setPeriod] = useState<Period>('this_month');
   const [dimension, setDimension] = useState<Dimension>('district');
@@ -69,12 +71,21 @@ export default function StateLeadDashboard() {
   const [fGps, setFGps] = useState('');
 
   useEffect(() => {
+    getSessionRole().then(({ role }) => {
+      if (role !== 'state_lead') { router.replace('/'); return; }
+      setAuthChecked(true);
+    });
+  }, [router]);
+
+  useEffect(() => {
+    if (!authChecked) return;
     fetch(`/api/observations/stats?dimension=${dimension}&period=${period}`)
       .then(r => r.json())
       .then(b => setStats(b.stats ?? []));
-  }, [period, dimension]);
+  }, [authChecked, period, dimension]);
 
   useEffect(() => {
+    if (!authChecked) return;
     Promise.all([
       fetch('/api/observations').then(r => r.json()),
       fetch('/api/hierarchy/email-map').then(r => r.json()),
@@ -118,6 +129,8 @@ export default function StateLeadDashboard() {
   }), [observations]);
 
   const hasFilters = fDistrict || fBlock || fBlockLead || fFieldWorker || fVillage || fTag || fGps;
+
+  if (!authChecked) return null;
 
   return (
     <main className="p-8 max-w-6xl">
