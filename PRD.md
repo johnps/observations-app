@@ -262,8 +262,9 @@ Roles are assigned manually by an admin in the webapp. Users log in via Google S
 - Closes on Escape or click-outside. Renders nothing if `urls` is empty.
 
 ### `useFilterState` hook (extracted)
-- Shared filter state and derived `filteredObservations`. Extracted from the duplication between district lead and state lead pages.
-- Used by both the observations page and the new map page.
+- Shared filter state and derived `filteredObservations`. Extracted from the district-lead observations page into `hooks/useFilterState.ts`.
+- Used by the district-lead observations page and the new map page. The state-lead page still uses its own inline filter state (not refactored).
+- Backed by a pure `filterObservations(obs, filters)` predicate in `lib/filterObservations.ts` — testable in Jest without jsdom.
 
 ### `/district-lead/map` page (new)
 - Role-gated to `district_lead`. District from session (ADR 0005).
@@ -274,10 +275,10 @@ Roles are assigned manually by an admin in the webapp. Users log in via Google S
 - No popup on pin click — map's purpose is spatial coverage overview, not record detail.
 
 ### Testing (Journeys 8–10)
-- `TopNav`: role → links mapping; name/email display; sign-out presence.
-- `PhotoLightbox`: empty renders nothing; thumbnails render; lightbox opens on click; prev/next advances/retreats; Escape closes; counter is accurate.
-- `useFilterState`: single filter reduces correctly; multiple filters are AND-combined; resetting returns all.
-- Map page: not unit-tested (Leaflet requires `window`; behaviour is visual).
+- `TopNav`: role → links mapping (Playwright); sign-out presence (Playwright).
+- `PhotoLightbox`: thumbnails render; lightbox opens on click; counter is accurate; Escape closes (Playwright).
+- `filterObservations` pure predicate: single filter, GPS filter, AND-combination, reset (Jest, node env).
+- Map page: leaflet container renders; filter controls present; TopNav links present (Playwright, 3 tests).
 
 ---
 
