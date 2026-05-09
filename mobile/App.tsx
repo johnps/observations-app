@@ -34,6 +34,7 @@ function BlockLeadHomeScreen({ route }: { route: { params: { email: string; subm
 
   const loadCounts = useCallback(async () => {
     setPendingCount(getPendingObservations().length);
+    setFailedCount(getFailedObservations().length);
     try {
       const res = await fetch(`${API_BASE}/api/observations?block_lead_email=${encodeURIComponent(email)}`);
       if (res.ok) {
@@ -43,14 +44,11 @@ function BlockLeadHomeScreen({ route }: { route: { params: { email: string; subm
     } catch { /* offline — leave synced count as-is */ }
   }, [email]);
 
-  // Full count refresh (including API) on focus; local counts poll every 3s so
-  // background syncs (AppState, NetInfo, post-submit) are reflected without manual tap.
+  // All three counts refresh together every 3s so background syncs (AppState, NetInfo,
+  // post-submit) update pending, synced, and failed without any navigation required.
   useFocusEffect(useCallback(() => {
     loadCounts();
-    const id = setInterval(() => {
-      setPendingCount(getPendingObservations().length);
-      setFailedCount(getFailedObservations().length);
-    }, 3_000);
+    const id = setInterval(() => { loadCounts(); }, 3_000);
     return () => clearInterval(id);
   }, [loadCounts]));
 
@@ -66,17 +64,13 @@ function BlockLeadHomeScreen({ route }: { route: { params: { email: string; subm
     setSyncing(true);
     setSyncError('');
     try {
-      const result = await syncPending();
+      const result = await syncPending({ force: true });
       await loadCounts();
-      const discarded = result.errors.length;
-      const willRetry = result.failed - discarded;
-      if (discarded > 0) {
+      if (result.errors.length > 0) {
+        const n = result.errors.length;
         setSyncError(
-          `${discarded} observation${discarded > 1 ? 's' : ''} could not be synced and ${discarded > 1 ? 'were' : 'was'} permanently discarded — please re-submit.` +
-          (willRetry > 0 ? ` ${willRetry} other${willRetry > 1 ? 's' : ''} will retry automatically.` : '')
+          `${n} observation${n > 1 ? 's' : ''} moved to Failed Observations — review and re-queue from there.`
         );
-      } else if (willRetry > 0) {
-        setSyncError(`${willRetry} observation${willRetry > 1 ? 's' : ''} failed to sync — will retry automatically.`);
       }
     } finally {
       setSyncing(false);

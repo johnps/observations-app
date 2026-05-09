@@ -45,7 +45,7 @@ jest.mock('@react-native-community/netinfo', () => ({
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-let syncPending: () => Promise<SyncResult>;
+let syncPending: (options?: { force?: boolean }) => Promise<SyncResult>;
 let syncHierarchy: (email: string) => Promise<void>;
 let getPendingObservations: jest.Mock;
 let markSynced: jest.Mock;
@@ -534,4 +534,117 @@ test('syncHierarchy times out gracefully and leaves stale cache intact', async (
 
   expect(cacheHierarchy).not.toHaveBeenCalled();
   jest.useRealTimers();
+});
+
+// ─── force option — Issues 0013 + 0014 ───────────────────────────────────────
+
+test('syncPending({ force: true }) bypasses backoff window and runs immediately', async () => {
+  let now = 1_000_000;
+  jest.spyOn(Date, 'now').mockReturnValue(now);
+  (getPendingObservations as jest.Mock).mockReturnValue([fakeRow()]);
+  (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 500 });
+
+  await syncPending(); // fails → sets 30s backoff
+
+  now += 10_000; // still within 30s window
+  jest.spyOn(Date, 'now').mockReturnValue(now);
+  (getPendingObservations as jest.Mock).mockReturnValue([fakeRow()]);
+  (global.fetch as jest.Mock).mockResolvedValue({ ok: true });
+
+  const result = await syncPending({ force: true });
+
+  expect(result.skipped).toBeUndefined();
+  expect(result.synced).toBe(1);
+  jest.restoreAllMocks();
+});
+
+test('syncPending without force still skips during backoff window', async () => {
+  let now = 1_000_000;
+  jest.spyOn(Date, 'now').mockReturnValue(now);
+  (getPendingObservations as jest.Mock).mockReturnValue([fakeRow()]);
+  (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 500 });
+
+  await syncPending(); // sets backoff
+
+  now += 10_000;
+  jest.spyOn(Date, 'now').mockReturnValue(now);
+  const result = await syncPending(); // no force → skipped
+
+  expect(result.skipped).toBe(true);
+  jest.restoreAllMocks();
+});
+
+test('syncPending({ force: true }) marks observation failed immediately on transient server error', async () => {
+  const obs = fakeObs();
+  (getPendingObservations as jest.Mock).mockReturnValue([fakeRow(obs)]);
+  (global.fetch as jest.Mock).mockResolvedValue({
+    ok: false,
+    status: 500,
+    json: () => Promise.resolve({ error: 'internal error' }),
+  });
+
+  const result = await syncPending({ force: true });
+
+  expect(markFailed).toHaveBeenCalledWith(obs, expect.stringContaining('internal error'));
+  expect(incrementRetryCount).not.toHaveBeenCalled();
+  expect(result.failed).toBe(1);
+  expect(result.errors.length).toBe(1);
+});
+
+test('syncPending({ force: true }) marks observation failed immediately on network error', async () => {
+  const obs = fakeObs({ photo_uris: [] });
+  (getPendingObservations as jest.Mock).mockReturnValue([fakeRow(obs)]);
+  (global.fetch as jest.Mock).mockRejectedValue(new Error('Network error'));
+
+  const result = await syncPending({ force: true });
+
+  expect(markFailed).toHaveBeenCalledWith(obs, expect.stringContaining('Network error'));
+  expect(incrementRetryCount).not.toHaveBeenCalled();
+  expect(result.failed).toBe(1);
+  expect(result.errors.length).toBe(1);
+});
+
+test('syncPending (background) still increments retry count on transient failure', async () => {
+  const obs = fakeObs();
+  (getPendingObservations as jest.Mock).mockReturnValue([fakeRow(obs)]);
+  (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 500 });
+
+  await syncPending(); // no force
+
+  expect(incrementRetryCount).toHaveBeenCalledWith(obs.id);
+  expect(markFailed).not.toHaveBeenCalled();
+});
+
+// ─── Auth failure mid-run abort — Issue 0010 ─────────────────────────────────
+
+test('syncPending aborts remaining observations and returns skipped:true on auth failure mid-run', async () => {
+  const obs1 = fakeObs({ id: '550e8400-e29b-41d4-a716-446655440001', photo_uris: [] });
+  const obs2 = fakeObs({ id: '550e8400-e29b-41d4-a716-446655440002', photo_uris: ['file:///a.jpg'] });
+  (getPendingObservations as jest.Mock).mockReturnValue([fakeRow(obs1), fakeRow(obs2)]);
+  (global.fetch as jest.Mock).mockResolvedValue({ ok: true }); // obs1 API call succeeds
+  (uploadPhoto as jest.Mock).mockRejectedValue(new Error('Upload failed: no authenticated session'));
+
+  const result = await syncPending();
+
+  expect(result.skipped).toBe(true);
+  expect(markSynced).toHaveBeenCalledWith(obs1.id);
+  expect(markFailed).not.toHaveBeenCalled(); // auth abort does not mark obs2 failed
+  expect(result.synced).toBe(1);
+});
+
+test('syncPending does not set backoff after auth abort', async () => {
+  const obs = fakeObs({ photo_uris: ['file:///a.jpg'] });
+  (getPendingObservations as jest.Mock).mockReturnValue([fakeRow(obs)]);
+  (uploadPhoto as jest.Mock).mockRejectedValue(new Error('Upload failed: no authenticated session'));
+
+  await syncPending(); // auth abort — no backoff
+
+  (getPendingObservations as jest.Mock).mockReturnValue([fakeRow()]);
+  (global.fetch as jest.Mock).mockResolvedValue({ ok: true });
+  (uploadPhoto as jest.Mock).mockResolvedValue('https://cdn.example.com/x.jpg');
+
+  const result = await syncPending(); // should not be blocked by backoff
+
+  expect(result.skipped).toBeUndefined();
+  expect(result.synced).toBe(1);
 });

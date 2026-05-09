@@ -27,10 +27,18 @@ function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> 
 
 export type SyncResult = { synced: number; failed: number; errors: string[]; skipped?: true };
 
-export async function syncPending(): Promise<SyncResult> {
-  if (Date.now() < _nextSyncAfter) {
+// force: true bypasses the backoff window (for manual Sync Now presses) and treats any
+// per-observation failure as terminal — marking it failed immediately rather than consuming
+// retry budget. Background fire-and-forget calls omit force, preserving existing backoff
+// and MAX_RETRIES behaviour.
+export async function syncPending(options?: { force?: boolean }): Promise<SyncResult> {
+  const force = options?.force ?? false;
+
+  if (!force && Date.now() < _nextSyncAfter) {
     return { skipped: true, synced: 0, failed: 0, errors: [] };
   }
+
+  if (force) console.log('[sync] force=true — bypassing backoff');
 
   if (!_isConnected) {
     console.log('[sync] skipped — offline');
@@ -54,6 +62,7 @@ export async function syncPending(): Promise<SyncResult> {
   let synced = 0;
   let failed = 0;
   const errors: string[] = [];
+  let authAborted = false;
 
   try {
     for (const obs of pending) {
@@ -92,38 +101,59 @@ export async function syncPending(): Promise<SyncResult> {
           markFailed(obs, reason);
           failed++;
         } else {
-          const newCount = incrementRetryCount(obs.id);
-          if (newCount >= MAX_RETRIES) {
-            errors.push(`Observation ${obs.id}: max retries exceeded`);
-            markFailed(obs, 'max retries exceeded');
+          if (force) {
+            const body = await res.json().catch(() => ({}));
+            const reason = body.error ?? body.message ?? `server error ${res.status}`;
+            errors.push(`Observation ${obs.id}: ${reason}`);
+            markFailed(obs, reason);
+          } else {
+            const newCount = incrementRetryCount(obs.id);
+            if (newCount >= MAX_RETRIES) {
+              errors.push(`Observation ${obs.id}: max retries exceeded`);
+              markFailed(obs, 'max retries exceeded');
+            }
           }
           failed++;
         }
       } catch (err) {
         console.log('[sync] obs error', String(err));
-        const newCount = incrementRetryCount(obs.id);
-        if (newCount >= MAX_RETRIES) {
-          errors.push(`Observation ${obs.id}: max retries exceeded`);
-          markFailed(obs, 'max retries exceeded');
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('no authenticated session')) {
+          console.log('[sync] auth failure mid-run — aborting');
+          authAborted = true;
+          break;
+        }
+        if (force) {
+          errors.push(`Observation ${obs.id}: ${msg}`);
+          markFailed(obs, msg);
+        } else {
+          const newCount = incrementRetryCount(obs.id);
+          if (newCount >= MAX_RETRIES) {
+            errors.push(`Observation ${obs.id}: max retries exceeded`);
+            markFailed(obs, 'max retries exceeded');
+          }
         }
         failed++;
       }
     }
   } finally {
     _syncing = false;
-    if (failed > 0) {
+    if (authAborted) {
+      _retryOnComplete = false;
+    } else if (failed > 0) {
       _backoffMs = Math.min(_backoffMs === 0 ? BACKOFF_INITIAL_MS : _backoffMs * 2, BACKOFF_CAP_MS);
       _nextSyncAfter = Date.now() + _backoffMs;
     } else {
       _backoffMs = 0;
       _nextSyncAfter = 0;
     }
-    if (_retryOnComplete) {
+    if (!authAborted && _retryOnComplete) {
       _retryOnComplete = false;
       syncPending();
     }
   }
 
+  if (authAborted) return { skipped: true, synced, failed, errors };
   return { synced, failed, errors };
 }
 
