@@ -1,42 +1,45 @@
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react-native';
+import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import LoginScreen from '../screens/LoginScreen';
 
-const mockNavigate = jest.fn();
-jest.mock('@react-navigation/native', () => ({
-  useNavigation: () => ({ navigate: mockNavigate }),
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  getItem: jest.fn(),
+  setItem: jest.fn(),
+  removeItem: jest.fn(),
+  clear: jest.fn(),
 }));
 
-beforeEach(() => mockNavigate.mockClear());
+jest.mock('expo-web-browser', () => ({
+  maybeCompleteAuthSession: jest.fn(),
+  openAuthSessionAsync: jest.fn().mockResolvedValue({ type: 'cancel' }),
+}));
 
-test('login screen shows all four role buttons', () => {
+jest.mock('expo-auth-session', () => ({
+  makeRedirectUri: jest.fn().mockReturnValue('livelihood-monitor://auth-callback'),
+}));
+
+jest.mock('../lib/supabase', () => ({
+  supabase: {
+    auth: {
+      signInWithOAuth: jest.fn().mockResolvedValue({ data: { url: null }, error: null }),
+      getUser: jest.fn(),
+      signOut: jest.fn(),
+    },
+  },
+}));
+
+jest.mock('@react-navigation/native', () => ({
+  useNavigation: () => ({ replace: jest.fn() }),
+}));
+
+test('login screen shows app title and sign-in button', () => {
   const { getByText } = render(<LoginScreen />);
-  expect(getByText('Admin')).toBeTruthy();
-  expect(getByText('District Lead')).toBeTruthy();
-  expect(getByText('Block Lead')).toBeTruthy();
-  expect(getByText('State Lead')).toBeTruthy();
+  expect(getByText('Livelihood Monitor')).toBeTruthy();
+  expect(getByText('Sign in with Google')).toBeTruthy();
 });
 
-test('pressing Admin navigates to AdminHome', () => {
-  const { getByText } = render(<LoginScreen />);
-  fireEvent.press(getByText('Admin'));
-  expect(mockNavigate).toHaveBeenCalledWith('AdminHome');
-});
-
-test('pressing District Lead navigates to DistrictLeadHome', () => {
-  const { getByText } = render(<LoginScreen />);
-  fireEvent.press(getByText('District Lead'));
-  expect(mockNavigate).toHaveBeenCalledWith('DistrictLeadHome');
-});
-
-test('pressing Block Lead navigates to BlockLeadHome', () => {
-  const { getByText } = render(<LoginScreen />);
-  fireEvent.press(getByText('Block Lead'));
-  expect(mockNavigate).toHaveBeenCalledWith('BlockLeadHome');
-});
-
-test('pressing State Lead navigates to StateLeadHome', () => {
-  const { getByText } = render(<LoginScreen />);
-  fireEvent.press(getByText('State Lead'));
-  expect(mockNavigate).toHaveBeenCalledWith('StateLeadHome');
+test('pressing sign-in button shows loading indicator', async () => {
+  const { getByText, queryByText, getByTestId } = render(<LoginScreen />);
+  fireEvent.press(getByText('Sign in with Google'));
+  await waitFor(() => expect(queryByText('Sign in with Google')).toBeNull());
 });
