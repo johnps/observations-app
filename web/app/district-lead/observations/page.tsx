@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState, Suspense, useMemo } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { TopNav } from '@/components/TopNav';
 import { PhotoLightbox } from '@/components/PhotoLightbox';
 import { getSessionRole } from '@/lib/getSessionRole';
+import { useFilterState } from '@/hooks/useFilterState';
 
 type Observation = {
   id: string;
@@ -35,7 +36,6 @@ const PERIOD_LABELS: Record<Period, string> = {
   last_3_months: 'Last 3 Months', last_6_months: 'Last 6 Months',
 };
 
-function uniq(arr: string[]) { return Array.from(new Set(arr)).sort(); }
 
 function ColFilter({ options, value, onChange }: { options: string[]; value: string; onChange: (v: string) => void }) {
   return (
@@ -78,13 +78,11 @@ function DistrictLeadObservationsInner() {
   const [period, setPeriod] = useState<Period>('this_month');
   const [selectedObs, setSelectedObs] = useState<Observation | null>(null);
 
-  const [fDistrict, setFDistrict] = useState('');
-  const [fBlock, setFBlock] = useState('');
-  const [fBlockLead, setFBlockLead] = useState('');
-  const [fFieldWorker, setFFieldWorker] = useState('');
-  const [fVillage, setFVillage] = useState('');
-  const [fTag, setFTag] = useState('');
-  const [fGps, setFGps] = useState('');
+  const {
+    fDistrict, setFDistrict, fBlock, setFBlock, fBlockLead, setFBlockLead,
+    fFieldWorker, setFFieldWorker, fVillage, setFVillage, fTag, setFTag, fGps, setFGps,
+    filteredObservations: filtered, opts, hasFilters, clearFilters,
+  } = useFilterState(observations);
 
   const [tagging, setTagging] = useState(false);
   const [tagResult, setTagResult] = useState<string | null>(null);
@@ -127,28 +125,6 @@ function DistrictLeadObservationsInner() {
     fetch(`${base}&district=${encodeURIComponent(districtFilter)}`).then(r => r.json()).then(b => setStats(b.stats ?? []));
   }, [dimension, period, districtFilter]);
 
-  const filtered = useMemo(() => observations.filter(o => {
-    if (fDistrict && o.district_name !== fDistrict) return false;
-    if (fBlock && o.block_name !== fBlock) return false;
-    if (fBlockLead && o.block_lead_email !== fBlockLead) return false;
-    if (fFieldWorker && o.field_worker_name !== fFieldWorker) return false;
-    if (fVillage && o.village_name !== fVillage) return false;
-    if (fTag && !(o.tags ?? []).includes(fTag)) return false;
-    if (fGps === 'captured' && !o.gps_captured) return false;
-    if (fGps === 'missing' && o.gps_captured) return false;
-    return true;
-  }), [observations, fDistrict, fBlock, fBlockLead, fFieldWorker, fVillage, fTag, fGps]);
-
-  const opts = useMemo(() => ({
-    districts: uniq(observations.map(o => o.district_name ?? '').filter(Boolean)),
-    blocks: uniq(observations.map(o => o.block_name ?? '').filter(Boolean)),
-    blockLeads: uniq(observations.map(o => o.block_lead_email)),
-    fieldWorkers: uniq(observations.map(o => o.field_worker_name)),
-    villages: uniq(observations.map(o => o.village_name)),
-    tags: uniq(observations.flatMap(o => o.tags ?? [])),
-  }), [observations]);
-
-  const hasFilters = fDistrict || fBlock || fBlockLead || fFieldWorker || fVillage || fTag || fGps;
 
   return (
     <>
@@ -219,7 +195,7 @@ function DistrictLeadObservationsInner() {
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs text-gray-400">{filtered.length} of {observations.length} observations</span>
         {hasFilters && (
-          <button onClick={() => { setFDistrict(''); setFBlock(''); setFBlockLead(''); setFFieldWorker(''); setFVillage(''); setFTag(''); setFGps(''); }}
+          <button onClick={clearFilters}
             className="text-xs text-gray-400 hover:text-gray-600">
             Clear all filters
           </button>
