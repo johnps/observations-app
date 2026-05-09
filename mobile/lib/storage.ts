@@ -1,16 +1,13 @@
+import { File } from 'expo-file-system';
 import { supabase } from './supabase';
 
 const BUCKET = 'observation-photos';
-const UPLOAD_TIMEOUT_MS = 60_000;
 
 export async function uploadPhoto(uri: string, obsId: string, index: number): Promise<string> {
   const path = `${obsId}/${index}.jpg`;
 
-  const fileRes = await Promise.race([
-    fetch(uri),
-    new Promise<never>((_, rej) => setTimeout(() => rej(new Error('Read timeout')), UPLOAD_TIMEOUT_MS)),
-  ]);
-  const blob = await (fileRes as Response).blob();
+  const fileBytes = await new File(uri).bytes();
+  const blob = new Blob([fileBytes], { type: 'image/jpeg' });
 
   const { error } = await supabase.storage
     .from(BUCKET)
