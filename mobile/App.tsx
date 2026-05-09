@@ -9,6 +9,7 @@ import { supabase } from './lib/supabase';
 import LoginScreen from './screens/LoginScreen';
 import ObservationForm from './screens/ObservationForm';
 import MyObservations from './screens/MyObservations';
+import FailedObservationsScreen from './screens/FailedObservations';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -213,11 +214,7 @@ export default function App() {
           {({ route }) => <MyObservations blockLeadEmail={(route.params as any).email} />}
         </Stack.Screen>
         <Stack.Screen name="FailedObservations" options={{ headerShown: true, title: 'Failed Observations' }}>
-          {() => (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ color: '#9ca3af', fontSize: 14 }}>No failed observations</Text>
-            </View>
-          )}
+          {({ route }) => <FailedObservationsScreen blockLeadEmail={(route.params as any).email} />}
         </Stack.Screen>
       </Stack.Navigator>
     </NavigationContainer>

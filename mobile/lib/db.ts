@@ -78,6 +78,22 @@ export function getFailedObservations(): FailedObservation[] {
   );
 }
 
+export function clearFailed(id: string) {
+  db.runSync('DELETE FROM failed_observations WHERE id = ?', [id]);
+}
+
+export function requeueFailed(id: string) {
+  db.withTransactionSync(() => {
+    const rows = db.getAllSync<{ payload: string }>(
+      'SELECT payload FROM failed_observations WHERE id = ?',
+      [id]
+    );
+    if (!rows[0]) return;
+    queueObservation(JSON.parse(rows[0].payload) as PendingObservation);
+    clearFailed(id);
+  });
+}
+
 export function cacheHierarchy(blockLeadEmail: string, rows: { field_worker_name: string; village_name: string }[]) {
   db.withTransactionSync(() => {
     db.runSync('DELETE FROM hierarchy_cache WHERE block_lead_email = ?', [blockLeadEmail]);

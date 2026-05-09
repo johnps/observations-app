@@ -1,4 +1,4 @@
-import { initDB, queueObservation, getPendingObservations, markSynced, markFailed, getFailedObservations, cacheHierarchy, getCachedFieldWorkers, getCachedVillages, incrementRetryCount, MAX_RETRIES } from '../lib/db';
+import { initDB, queueObservation, getPendingObservations, markSynced, markFailed, getFailedObservations, clearFailed, requeueFailed, cacheHierarchy, getCachedFieldWorkers, getCachedVillages, incrementRetryCount, MAX_RETRIES } from '../lib/db';
 import type { PendingObservation } from '../types/observation';
 
 jest.mock('expo-sqlite');
@@ -112,4 +112,40 @@ test('markFailed stores observation in failed list', () => {
   expect(failed[0].id).toBe('fail-1');
   expect(failed[0].reason).toBe('max retries exceeded');
   expect(JSON.parse(failed[0].payload).text).toBe('test obs');
+});
+
+test('requeueFailed moves observation back to pending queue with reset retry count', () => {
+  const obs = fakeObs('requeue-1');
+  queueObservation(obs);
+  // burn some retries then mark failed
+  incrementRetryCount('requeue-1');
+  incrementRetryCount('requeue-1');
+  markFailed(obs, 'max retries exceeded');
+  expect(getPendingObservations()).toHaveLength(0);
+
+  requeueFailed('requeue-1');
+
+  const pending = getPendingObservations();
+  expect(pending).toHaveLength(1);
+  expect(pending[0].id).toBe('requeue-1');
+});
+
+test('requeueFailed removes observation from failed list', () => {
+  const obs = fakeObs('requeue-2');
+  queueObservation(obs);
+  markFailed(obs, 'max retries exceeded');
+  expect(getFailedObservations()).toHaveLength(1);
+
+  requeueFailed('requeue-2');
+
+  expect(getFailedObservations()).toHaveLength(0);
+});
+
+test('clearFailed removes observation from failed list', () => {
+  const obs = fakeObs('fail-clear');
+  queueObservation(obs);
+  markFailed(obs, 'invalid data');
+  expect(getFailedObservations()).toHaveLength(1);
+  clearFailed('fail-clear');
+  expect(getFailedObservations()).toHaveLength(0);
 });

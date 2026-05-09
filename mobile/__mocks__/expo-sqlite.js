@@ -40,6 +40,10 @@ const _db = {
       const row = _store[params[0]];
       return row ? [{ retry_count: row.retry_count ?? 0 }] : [];
     }
+    if (s.includes('SELECT PAYLOAD FROM FAILED_OBSERVATIONS')) {
+      const row = _failedStore[params[0]];
+      return row ? [{ payload: row.payload }] : [];
+    }
     if (s.includes('FROM FAILED_OBSERVATIONS')) {
       return Object.values(_failedStore);
     }
