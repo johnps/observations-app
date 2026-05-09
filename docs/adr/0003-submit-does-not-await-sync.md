@@ -31,5 +31,6 @@ The home screen banner now always shows "⏳ Saved offline — will sync when co
 ## Consequences
 
 - Do not re-couple `handleSubmit` to `syncPending()`. The 30s hang is real and was causing users to force-close the app.
-- The `wasSynced` param in `RootStackParamList.BlockLeadHome` is now effectively always `false` when set from `ObservationForm`. It is retained in the type in case other callers use it.
+- Navigation to `BlockLeadHome` passes `submitKey: Date.now()` (a timestamp that changes on every submission) and `isOnline: boolean` (from a `NetInfo.addEventListener` subscription). The home screen `useEffect` fires on every new `submitKey` value to show the appropriate banner. The old `wasSynced` param has been removed.
+- `NetInfo.fetch()` hangs indefinitely on some Samsung Android devices. Connectivity state must be tracked via `NetInfo.addEventListener` subscription — never call `NetInfo.fetch()` in a submit or sync code path.
 - The home screen counts (via `loadCounts`) are the intended place to communicate sync status, not the submission banner.
