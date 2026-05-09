@@ -19,6 +19,18 @@ jest.mock('../lib/useHierarchy', () => ({
 }));
 jest.mock('../lib/sync', () => ({ syncPending: jest.fn().mockResolvedValue({ synced: 1, failed: 0, errors: [] }) }));
 
+jest.mock('expo-crypto', () => ({
+  randomUUID: jest.fn(() => 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'),
+}));
+
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: {
+    fetch: jest.fn().mockResolvedValue({ isConnected: true }),
+    addEventListener: jest.fn().mockReturnValue(() => {}),
+  },
+}));
+
 jest.mock('expo-image-picker', () => ({
   launchImageLibraryAsync: jest.fn(),
   launchCameraAsync: jest.fn(),
@@ -33,8 +45,7 @@ jest.mock('expo-image-manipulator', () => ({
 
 jest.mock('expo-location', () => ({
   requestForegroundPermissionsAsync: jest.fn().mockResolvedValue({ status: 'granted' }),
-  getCurrentPositionAsync: jest.fn().mockResolvedValue({ coords: { latitude: 26.9, longitude: 75.8 } }),
-  Accuracy: { Balanced: 3 },
+  getLastKnownPositionAsync: jest.fn().mockResolvedValue({ coords: { latitude: 26.9, longitude: 75.8 } }),
 }));
 
 jest.mock('expo-file-system', () => ({
@@ -70,7 +81,7 @@ beforeEach(() => {
     }),
   });
   const Location = require('expo-location');
-  Location.getCurrentPositionAsync.mockResolvedValue({ coords: { latitude: 26.9, longitude: 75.8 } });
+  Location.getLastKnownPositionAsync.mockResolvedValue({ coords: { latitude: 26.9, longitude: 75.8 } });
 });
 
 test('observation form renders text input, STT hint, and submit button', async () => {
@@ -332,6 +343,17 @@ test('submitting includes photo_uris when photos are selected', async () => {
   );
 });
 
+test('shows error and does not submit when observation text is empty', async () => {
+  const { getByText, findByText, getByTestId } = render(
+    <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
+  );
+  await selectWorkerAndVillage(getByTestId, getByText);
+  // leave observation text empty
+  fireEvent.press(getByText('Submit'));
+  expect(await findByText(/please write an observation/i)).toBeTruthy();
+  expect(queueObservation).not.toHaveBeenCalled();
+});
+
 test('submitted observation id is a valid UUID (non-UUID ids are rejected by Supabase)', async () => {
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   const { getByPlaceholderText, getByText, getByTestId } = render(
@@ -345,20 +367,16 @@ test('submitted observation id is a valid UUID (non-UUID ids are rejected by Sup
   expect(UUID_RE.test(id)).toBe(true);
 });
 
-test('submit proceeds without GPS fields when location hangs past 5s', async () => {
+test('submit proceeds without GPS fields when no cached location is available', async () => {
   const Location = require('expo-location');
-  Location.getCurrentPositionAsync.mockReturnValue(new Promise(() => {})); // never resolves
+  Location.getLastKnownPositionAsync.mockResolvedValue(null);
 
   const { getByPlaceholderText, getByText, getByTestId } = render(
     <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
   );
   await selectWorkerAndVillage(getByTestId, getByText);
   fireEvent.changeText(getByPlaceholderText(/observation/i), 'GPS hang test');
-
-  jest.useFakeTimers();
   fireEvent.press(getByText('Submit'));
-  await jest.advanceTimersByTimeAsync(5001);
-  jest.useRealTimers();
 
   await waitFor(() => expect(queueObservation).toHaveBeenCalled());
   const call = (queueObservation as jest.Mock).mock.calls[0][0];

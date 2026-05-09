@@ -5,13 +5,14 @@ import {
   Modal, FlatList, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import NetInfo from '@react-native-community/netinfo';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../App';
 import { File, Directory, Paths } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as Location from 'expo-location';
-import { v4 as uuidv4 } from 'uuid';
+import * as Crypto from 'expo-crypto';
 import { queueObservation } from '../lib/db';
 import type { PendingObservation } from '../types/observation';
 import { syncPending } from '../lib/sync';
@@ -102,11 +103,16 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [photoError, setPhotoError] = useState('');
+  const [isConnected, setIsConnected] = useState(true);
 
   const { fieldWorkers, villages } = useHierarchy(blockLeadEmail, selectedWorker);
 
   useEffect(() => {
     Location.requestForegroundPermissionsAsync();
+    const unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
+      setIsConnected(state.isConnected ?? true);
+    });
+    return unsubscribe;
   }, []);
 
   async function addPhoto(uri: string, width: number) {
@@ -159,29 +165,25 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
   }
 
   async function handleSubmit() {
-    if (!observationText.trim()) return;
+    if (!observationText.trim()) { setSubmitError('Please write an observation.'); return; }
     if (!selectedWorker) { setSubmitError('Please select a field worker.'); return; }
     if (!selectedVillage) { setSubmitError('Please select a village.'); return; }
     setSubmitting(true);
     setSubmitError('');
-    const id = uuidv4();
+    const id = Crypto.randomUUID();
+    console.log('[submit] start', id);
 
     let gps_lat: number | undefined;
     let gps_lng: number | undefined;
-    let gpsTimer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const loc = await Promise.race([
-        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-        new Promise<never>((_, reject) => {
-          gpsTimer = setTimeout(() => reject(new Error('GPS timeout')), 5_000);
-        }),
-      ]);
-      gps_lat = loc.coords.latitude;
-      gps_lng = loc.coords.longitude;
-    } catch {
-      // permission denied, unavailable, or timed out — submit without GPS
-    } finally {
-      clearTimeout(gpsTimer);
+      const loc = await Location.getLastKnownPositionAsync({ maxAge: 300_000 });
+      console.log('[submit] gps done', loc ? 'got fix' : 'no fix');
+      if (loc) {
+        gps_lat = loc.coords.latitude;
+        gps_lng = loc.coords.longitude;
+      }
+    } catch (err) {
+      console.log('[submit] gps error', String(err));
     }
 
     try {
@@ -196,8 +198,11 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
         gps_lng,
         submitted_at: new Date().toISOString(),
       };
+      console.log('[submit] queuing');
       queueObservation(obs);
-    } catch {
+      console.log('[submit] queued ok');
+    } catch (err) {
+      console.log('[submit] queue error', String(err));
       setSubmitError('Could not save observation — device may be out of storage.');
       setSubmitting(false);
       return;
@@ -205,10 +210,11 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
     setSubmitting(false);
     navigation.navigate('BlockLeadHome', {
       email: blockLeadEmail,
-      justSubmitted: true,
-      wasSynced: false,
+      submitKey: Date.now(),
+      isOnline: isConnected,
     });
-    syncPending(); // fire and forget — home screen refreshes counts on focus
+    console.log('[submit] done');
+    syncPending(); // fire and forget — home screen polls pending count and will reflect result
   }
 
   return (

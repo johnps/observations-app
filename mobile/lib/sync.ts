@@ -13,6 +13,10 @@ let _retryOnComplete = false;
 let _backoffMs = 0;
 let _nextSyncAfter = 0;
 
+// Track connectivity via listener so syncPending() never blocks on NetInfo.fetch().
+let _isConnected = true;
+NetInfo.addEventListener(state => { _isConnected = state.isConnected ?? true; });
+
 function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -27,8 +31,8 @@ export async function syncPending(): Promise<SyncResult> {
     return { skipped: true, synced: 0, failed: 0, errors: [] };
   }
 
-  const netState = await NetInfo.fetch();
-  if (!netState.isConnected) {
+  if (!_isConnected) {
+    console.log('[sync] skipped — offline');
     return { skipped: true, synced: 0, failed: 0, errors: [] };
   }
 
@@ -57,11 +61,13 @@ export async function syncPending(): Promise<SyncResult> {
         const { photo_uris: _, ...rest } = obs;
         const payload = JSON.stringify({ ...rest, photo_urls: photoUrls });
 
+        console.log('[sync] posting obs', obs.id);
         const res = await fetchWithTimeout(`${API_BASE}/api/observations`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: payload,
         });
+        console.log('[sync] api response', res.status);
 
         if (res.ok) {
           for (const uri of photoUris) {
@@ -85,7 +91,8 @@ export async function syncPending(): Promise<SyncResult> {
           }
           failed++;
         }
-      } catch {
+      } catch (err) {
+        console.log('[sync] obs error', String(err));
         const newCount = incrementRetryCount(obs.id);
         if (newCount >= MAX_RETRIES) {
           errors.push(`Discarded observation ${obs.id}: max retries exceeded`);

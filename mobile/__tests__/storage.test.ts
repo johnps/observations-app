@@ -1,46 +1,85 @@
 import { uploadPhoto } from '../lib/storage';
 
+jest.mock('../lib/supabase', () => ({
+  supabase: {
+    auth: {
+      getSession: jest.fn().mockResolvedValue({
+        data: { session: { access_token: 'test-jwt' } },
+      }),
+    },
+  },
+}));
+
 beforeEach(() => {
+  jest.clearAllMocks();
   (global.fetch as jest.Mock) = jest.fn();
 });
 
-test('uploadPhoto POSTs to Supabase Storage with auth header and returns public URL', async () => {
-  // fetch called twice: once to read the local file, once to upload
+test('uploadPhoto reads file via fetch, POSTs native blob to Supabase REST with user JWT', async () => {
   (global.fetch as jest.Mock)
     .mockResolvedValueOnce({ blob: () => Promise.resolve(new Blob(['img'], { type: 'image/jpeg' })) })
     .mockResolvedValueOnce({ ok: true });
 
   const url = await uploadPhoto('file:///tmp/photo.jpg', 'obs-123', 0);
 
-  const uploadCall = (global.fetch as jest.Mock).mock.calls[1];
-  expect(uploadCall[0]).toContain('/storage/v1/object/observation-photos/obs-123/0.jpg');
-  expect(uploadCall[1].headers['Authorization']).toMatch(/^Bearer /);
-  expect(url).toContain('obs-123/0.jpg');
+  const [uploadUrl, opts] = (global.fetch as jest.Mock).mock.calls[1];
+  expect(uploadUrl).toContain('/storage/v1/object/observation-photos/obs-123/0.jpg');
+  expect(opts.method).toBe('POST');
+  expect(opts.headers['Authorization']).toBe('Bearer test-jwt');
+  expect(opts.headers['x-upsert']).toBe('true');
+  expect(url).toContain('/object/public/observation-photos/obs-123/0.jpg');
 });
 
-test('uploadPhoto throws when upload response is not ok', async () => {
+test('uploadPhoto throws with server error message when upload is not ok', async () => {
   (global.fetch as jest.Mock)
     .mockResolvedValueOnce({ blob: () => Promise.resolve(new Blob()) })
-    .mockResolvedValueOnce({ ok: false, status: 403 });
+    .mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: () => Promise.resolve({ message: 'new row violates row-level security policy' }),
+    });
 
   await expect(uploadPhoto('file:///tmp/photo.jpg', 'obs-123', 0)).rejects.toThrow('Upload failed');
 });
 
-// Issue C: upload timeout
+test('uploadPhoto sends x-upsert header — safe to retry without duplicate errors', async () => {
+  (global.fetch as jest.Mock)
+    .mockResolvedValueOnce({ blob: () => Promise.resolve(new Blob()) })
+    .mockResolvedValueOnce({ ok: true });
+
+  await uploadPhoto('file:///tmp/photo.jpg', 'obs-123', 0);
+
+  const [, opts] = (global.fetch as jest.Mock).mock.calls[1];
+  expect(opts.headers['x-upsert']).toBe('true');
+});
+
+test('uploadPhoto falls back to anon key when no session', async () => {
+  const { supabase } = require('../lib/supabase');
+  supabase.auth.getSession.mockResolvedValue({ data: { session: null } });
+  (global.fetch as jest.Mock)
+    .mockResolvedValueOnce({ blob: () => Promise.resolve(new Blob()) })
+    .mockResolvedValueOnce({ ok: true });
+
+  await uploadPhoto('file:///tmp/photo.jpg', 'obs-123', 0);
+
+  const [, opts] = (global.fetch as jest.Mock).mock.calls[1];
+  expect(opts.headers['Authorization']).toMatch(/^Bearer /);
+});
+
 test('uploadPhoto throws when upload times out', async () => {
   jest.useFakeTimers();
-  (global.fetch as jest.Mock).mockImplementation((_url: string, options: RequestInit) =>
-    new Promise((_resolve, reject) => {
-      options?.signal?.addEventListener('abort', () =>
-        reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }))
-      );
-    })
-  );
+  (global.fetch as jest.Mock)
+    .mockResolvedValueOnce({ blob: () => Promise.resolve(new Blob()) })
+    .mockImplementation((_url: string, opts: RequestInit) =>
+      new Promise((_res, rej) => {
+        opts?.signal?.addEventListener('abort', () =>
+          rej(Object.assign(new Error('Aborted'), { name: 'AbortError' }))
+        );
+      })
+    );
 
-  const uploadPromise = uploadPhoto('file:///tmp/photo.jpg', 'obs-123', 0);
-  // Attach the assertion before advancing time so the rejection handler is in place
-  // when the AbortController fires — avoids an unhandled-rejection warning.
-  const assertion = expect(uploadPromise).rejects.toThrow();
+  const promise = uploadPhoto('file:///tmp/photo.jpg', 'obs-123', 0);
+  const assertion = expect(promise).rejects.toThrow();
   await jest.advanceTimersByTimeAsync(61_000);
   await assertion;
   jest.useRealTimers();

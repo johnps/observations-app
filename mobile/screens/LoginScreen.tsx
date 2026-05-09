@@ -20,17 +20,23 @@ export default function LoginScreen() {
     setLoading(true);
     setError('');
     try {
+      console.log('[auth] redirect uri', REDIRECT_URI);
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo: REDIRECT_URI, skipBrowserRedirect: true },
       });
       if (oauthError || !data.url) throw oauthError ?? new Error('No auth URL');
+      console.log('[auth] oauth url created');
+      const oauthUrl = new URL(data.url);
+      console.log('[auth] oauth redirect_to', oauthUrl.searchParams.get('redirect_to'));
 
-      const result = await WebBrowser.openAuthSessionAsync(data.url, 'livelihood-monitor://');
+      const result = await WebBrowser.openAuthSessionAsync(data.url, REDIRECT_URI);
+      console.log('[auth] browser result', result.type);
       if (result.type !== 'success') { setLoading(false); return; }
 
       const parsed = new URL(result.url);
       const code = parsed.searchParams.get('code');
+      console.log('[auth] callback received', code ? 'code' : 'tokens');
 
       if (code) {
         const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code);

@@ -18,9 +18,18 @@ jest.mock('expo-file-system', () => ({
   File: jest.fn().mockImplementation(() => ({ delete: mockFileDelete })),
 }));
 
+// Capture the listener so tests can simulate connectivity changes.
+let _netInfoCallback: ((state: { isConnected: boolean | null }) => void) | null = null;
+
 jest.mock('@react-native-community/netinfo', () => ({
   __esModule: true,
-  default: { fetch: jest.fn().mockResolvedValue({ isConnected: true }) },
+  default: {
+    fetch: jest.fn().mockResolvedValue({ isConnected: true }),
+    addEventListener: jest.fn().mockImplementation((cb: any) => {
+      _netInfoCallback = cb;
+      return () => {};
+    }),
+  },
 }));
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -80,8 +89,7 @@ test('syncPending returns zeros when queue is empty', async () => {
 });
 
 test('syncPending returns skipped: true when offline', async () => {
-  const NetInfo = require('@react-native-community/netinfo').default;
-  NetInfo.fetch.mockResolvedValueOnce({ isConnected: false });
+  _netInfoCallback?.({ isConnected: false });
   (getPendingObservations as jest.Mock).mockReturnValue([fakeRow()]);
 
   const result = await syncPending();
