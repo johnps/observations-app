@@ -195,8 +195,96 @@ Roles are assigned manually by an admin in the webapp. Users log in via Google S
 
 ---
 
+---
+
+## User Journey 8: District Lead — Viewing Photos Attached to an Observation
+
+**Context:** District lead is reviewing observations in the table and wants to see the photographic evidence captured by a block lead.
+
+**Steps:**
+1. District lead clicks an observation row to expand it.
+2. The expanded section shows GPS coordinates (existing) and, if photos are attached, a row of small thumbnails.
+3. District lead clicks a thumbnail — a full-screen lightbox opens showing the photo.
+4. District lead uses prev/next arrows to browse all photos for that observation. A counter ("2 of 4") indicates position.
+5. District lead presses Escape or clicks outside the image to close the lightbox.
+
+**Post-condition:** District lead has viewed the visual evidence without leaving the observations page.
+
+---
+
+## User Journey 9: District Lead — Viewing GPS Pins on a Map
+
+**Context:** District lead wants to see spatial distribution of observations across her district — which villages are active and which are dark spots.
+
+**Steps:**
+1. District lead clicks "Map" in the navigation bar.
+2. She lands on a full-screen map centred on her district at village-level zoom (not country level).
+3. Each observation with a GPS coordinate is shown as a pin on the map.
+4. She uses filter controls (block, field worker, village, tag) to focus on a subset.
+5. The map updates instantly to show only pins matching the active filters.
+6. Observations without GPS coordinates do not appear on the map.
+
+**Post-condition:** District lead has a spatial view of observation coverage and can identify geographic gaps.
+
+---
+
+## User Journey 10: Web Users — Consistent Navigation Across All Pages
+
+**Context:** Any web user (district lead, state lead, admin) wants to move between sections of the app without relying on browser back buttons.
+
+**Steps:**
+1. Every web page shows a persistent top navigation bar.
+2. The nav bar displays the user's name and email (from Google account) and a sign-out button.
+3. Links in the nav bar are role-appropriate:
+   - District lead: Observations | Map
+   - State lead: Overview
+   - Admin: Users | Hierarchy | Tags
+4. The active page link is visually distinguished.
+5. Clicking any nav link navigates to that page without reloading the session.
+
+**Post-condition:** User can navigate between all sections of the app from any page without losing context.
+
+---
+
+## Implementation Decisions (User Journeys 8–10)
+
+### API change
+- `GET /api/observations` must return `photo_urls` (string array). The field is stored in the database but currently omitted from the response. No schema change required.
+
+### `TopNav` component (new)
+- Role-aware: renders links based on `role` prop.
+- Shows `displayName` and `email` from `session.user.user_metadata.full_name` and `session.user.email` — no separate name column in the database.
+- Includes sign-out. Mounted on all web pages.
+
+### `PhotoLightbox` component (new)
+- Accepts `urls: string[]`. Renders thumbnails inline in the expanded row.
+- Clicking a thumbnail opens a modal with prev/next arrows and a "n of total" counter.
+- Closes on Escape or click-outside. Renders nothing if `urls` is empty.
+
+### `useFilterState` hook (extracted)
+- Shared filter state and derived `filteredObservations`. Extracted from the duplication between district lead and state lead pages.
+- Used by both the observations page and the new map page.
+
+### `/district-lead/map` page (new)
+- Role-gated to `district_lead`. District from session (ADR 0005).
+- react-leaflet + OpenStreetMap tiles (free, no API key). Dynamic import with `ssr: false` to avoid Next.js SSR issues with `window`.
+- Plots a `CircleMarker` for each filtered observation where `gps_captured === true`.
+- Default center: mean lat/lng of all GPS observations in district; default zoom 13.
+- Filter controls: block, field worker, village, tag (via `useFilterState`).
+- No popup on pin click — map's purpose is spatial coverage overview, not record detail.
+
+### Testing (Journeys 8–10)
+- `TopNav`: role → links mapping; name/email display; sign-out presence.
+- `PhotoLightbox`: empty renders nothing; thumbnails render; lightbox opens on click; prev/next advances/retreats; Escape closes; counter is accurate.
+- `useFilterState`: single filter reduces correctly; multiple filters are AND-combined; resetting returns all.
+- Map page: not unit-tested (Leaflet requires `window`; behaviour is visual).
+
+---
+
 ## Deferred (Post-MVP)
 - Auto-computation of village GPS coordinates from accumulated observations
 - Manual tag override by district lead
 - Block lead notification for GPS-flagged observations
 - Retroactive re-tagging of past observations when tag definitions change
+- Map popup on pin click showing observation detail
+- Map view for state leads (multi-district spatial overview)
