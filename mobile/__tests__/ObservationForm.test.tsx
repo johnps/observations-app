@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, fireEvent, waitFor } from '@testing-library/react-native';
+import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
 import ObservationForm from '../screens/ObservationForm';
 import { queueObservation } from '../lib/db';
 import { syncPending } from '../lib/sync';
@@ -46,6 +46,7 @@ jest.mock('expo-image-manipulator', () => ({
 jest.mock('expo-location', () => ({
   requestForegroundPermissionsAsync: jest.fn().mockResolvedValue({ status: 'granted' }),
   getCurrentPositionAsync: jest.fn().mockResolvedValue({ coords: { latitude: 26.9, longitude: 75.8 } }),
+  Accuracy: { High: 4 },
 }));
 
 jest.mock('expo-file-system', () => ({
@@ -365,6 +366,63 @@ test('submitted observation id is a valid UUID (non-UUID ids are rejected by Sup
   await waitFor(() => expect(queueObservation).toHaveBeenCalled());
   const { id } = (queueObservation as jest.Mock).mock.calls[0][0];
   expect(UUID_RE.test(id)).toBe(true);
+});
+
+// ─── Issues 0008 + 0009: GPS accuracy, timeout, retry ───────────────────────
+
+test('GPS status becomes unavailable after 15-second timeout', async () => {
+  jest.useFakeTimers();
+  const Location = require('expo-location');
+  Location.getCurrentPositionAsync.mockReturnValue(new Promise(() => {})); // never resolves
+
+  const { getByText } = render(<ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />);
+  await waitFor(() => getByText('Acquiring GPS…'));
+
+  await act(async () => { jest.advanceTimersByTime(15001); });
+
+  await waitFor(() => expect(getByText(/GPS unavailable/)).toBeTruthy());
+  jest.useRealTimers();
+});
+
+test('getCurrentPositionAsync is called with High accuracy', async () => {
+  const Location = require('expo-location');
+  render(<ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />);
+  await waitFor(() => expect(Location.getCurrentPositionAsync).toHaveBeenCalledWith(
+    expect.objectContaining({ accuracy: Location.Accuracy.High })
+  ));
+});
+
+test('shows Retry GPS button when GPS is unavailable', async () => {
+  const Location = require('expo-location');
+  Location.getCurrentPositionAsync.mockRejectedValue(new Error('no gps'));
+
+  const { getByText } = render(<ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />);
+  await waitFor(() => getByText(/GPS unavailable/));
+  expect(getByText('Retry GPS')).toBeTruthy();
+});
+
+test('retry GPS succeeds — shows acquired and hides retry button', async () => {
+  const Location = require('expo-location');
+  Location.getCurrentPositionAsync
+    .mockRejectedValueOnce(new Error('no gps'))
+    .mockResolvedValueOnce({ coords: { latitude: 26.9, longitude: 75.8 } });
+
+  const { getByText, queryByText } = render(<ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />);
+  await waitFor(() => getByText('Retry GPS'));
+  fireEvent.press(getByText('Retry GPS'));
+  await waitFor(() => getByText('GPS acquired'));
+  expect(queryByText('Retry GPS')).toBeNull();
+});
+
+test('retry GPS fails — shows unavailable and retry button reappears', async () => {
+  const Location = require('expo-location');
+  Location.getCurrentPositionAsync.mockRejectedValue(new Error('no gps'));
+
+  const { getByText } = render(<ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />);
+  await waitFor(() => getByText('Retry GPS'));
+  fireEvent.press(getByText('Retry GPS'));
+  await waitFor(() => getByText(/GPS unavailable/));
+  expect(getByText('Retry GPS')).toBeTruthy();
 });
 
 // ─── Issue 0007: GPS status indicator ───────────────────────────────────────

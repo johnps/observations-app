@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, Image,
   StyleSheet, ActivityIndicator, ScrollView,
@@ -109,21 +109,30 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
   const locationRef = useRef<{ latitude: number; longitude: number } | null>(null);
   const [gpsStatus, setGpsStatus] = useState<'acquiring' | 'acquired' | 'unavailable'>('acquiring');
 
-  useEffect(() => {
-    Location.requestForegroundPermissionsAsync().then(() => {
-      Location.getCurrentPositionAsync({}).then(loc => {
-        if (loc) {
-          locationRef.current = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
-          console.log('[form] gps acquired', locationRef.current.latitude, locationRef.current.longitude);
-          setGpsStatus('acquired');
-        } else {
-          setGpsStatus('unavailable');
-        }
-      }).catch(err => {
-        console.log('[form] gps error', String(err));
+  const acquireGps = useCallback(async () => {
+    setGpsStatus('acquiring');
+    const timeout = new Promise<null>(resolve => setTimeout(() => resolve(null), 15000));
+    try {
+      const loc = await Promise.race([
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
+        timeout,
+      ]);
+      if (loc) {
+        locationRef.current = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+        console.log('[form] gps acquired', locationRef.current.latitude, locationRef.current.longitude);
+        setGpsStatus('acquired');
+      } else {
+        console.log('[form] gps timeout');
         setGpsStatus('unavailable');
-      });
-    });
+      }
+    } catch (err) {
+      console.log('[form] gps error', String(err));
+      setGpsStatus('unavailable');
+    }
+  }, []);
+
+  useEffect(() => {
+    Location.requestForegroundPermissionsAsync().then(() => acquireGps());
     const unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
       setIsConnected(state.isConnected ?? true);
     });
@@ -288,11 +297,18 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
 
         {photoError ? <Text style={styles.error}>{photoError}</Text> : null}
         {submitError ? <Text style={styles.error}>{submitError}</Text> : null}
-        <Text style={styles.gpsStatus}>
-          {gpsStatus === 'acquiring' ? 'Acquiring GPS…'
-            : gpsStatus === 'acquired' ? 'GPS acquired'
-            : 'GPS unavailable — observation will be submitted without location'}
-        </Text>
+        <View style={styles.gpsRow}>
+          <Text style={styles.gpsStatus}>
+            {gpsStatus === 'acquiring' ? 'Acquiring GPS…'
+              : gpsStatus === 'acquired' ? 'GPS acquired'
+              : 'GPS unavailable — observation will be submitted without location'}
+          </Text>
+          {gpsStatus === 'unavailable' && (
+            <TouchableOpacity onPress={acquireGps} style={styles.gpsRetryButton}>
+              <Text style={styles.gpsRetryText}>Retry GPS</Text>
+            </TouchableOpacity>
+          )}
+        </View>
         <TouchableOpacity
           style={[styles.submit, submitting && styles.submitDisabled]}
           onPress={handleSubmit}
@@ -338,7 +354,10 @@ const styles = StyleSheet.create({
   photoButtons: { flexDirection: 'row', gap: 8, marginTop: 4 },
   photoButton: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 12, alignItems: 'center' },
   photoButtonText: { color: '#374151', fontSize: 14 },
-  gpsStatus: { marginTop: 16, fontSize: 12, color: '#9ca3af', textAlign: 'center' },
+  gpsRow: { marginTop: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  gpsStatus: { fontSize: 12, color: '#9ca3af', textAlign: 'center', flexShrink: 1 },
+  gpsRetryButton: { paddingHorizontal: 8, paddingVertical: 2 },
+  gpsRetryText: { fontSize: 12, color: '#111827', textDecorationLine: 'underline' },
   submit: { marginTop: 8, marginBottom: 16, backgroundColor: '#111827', borderRadius: 8, padding: 14, alignItems: 'center' },
   submitDisabled: { opacity: 0.5 },
   submitText: { color: '#fff', fontWeight: '600', fontSize: 15 },
