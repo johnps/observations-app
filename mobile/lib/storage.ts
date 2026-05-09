@@ -45,5 +45,6 @@ export async function uploadPhoto(uri: string, obsId: string, index: number): Pr
     throw new Error(`Upload failed: ${msg}`);
   }
 
+  console.log('[storage] uploaded ok', path);
   return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${path}`;
 }
