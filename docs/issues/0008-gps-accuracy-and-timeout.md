@@ -25,3 +25,7 @@ Block lead opens the observation form in an area with weak signal and sees "GPS 
 ## Blocked by
 
 Issue 0007 — GPS status indicator on observation form (must be merged first; state machine and locationRef already in place)
+
+## Status
+
+Implemented

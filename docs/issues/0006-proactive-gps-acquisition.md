@@ -23,3 +23,7 @@ A block lead opens a new observation form at home on a good network connection, 
 ## Blocked by
 
 None — can start immediately
+
+## Status
+
+Implemented

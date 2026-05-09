@@ -29,3 +29,7 @@ Block lead presses Sync Now, the upload fails — the observation immediately ap
 ## Blocked by
 
 Issue 0013 — Sync Now backoff UX (the `force` option distinguishes manual from background)
+
+## Status
+
+Implemented

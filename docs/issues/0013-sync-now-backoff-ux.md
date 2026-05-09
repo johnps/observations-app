@@ -32,3 +32,7 @@ Block lead presses Sync Now — the spinner appears immediately every time, even
 ## Blocked by
 
 None — can start immediately
+
+## Status
+
+Implemented

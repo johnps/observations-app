@@ -34,3 +34,7 @@ A district lead on her observations page presses "Auto-tag Now" and sees only he
 ## Blocked by
 
 None — can start immediately
+
+## Status
+
+Implemented

@@ -32,3 +32,7 @@ Block lead re-queues a photo observation from Failed Observations — it syncs s
 ## Blocked by
 
 None — can start immediately
+
+## Status
+
+Implemented

@@ -11,3 +11,4 @@ mobile/dist/
 
 # OS
 .DS_Store
+.claude/scheduled_tasks.lock

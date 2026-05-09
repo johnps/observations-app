@@ -33,3 +33,7 @@ Block lead opens the observation form and sees "Acquiring GPS…" briefly, then 
 ## Blocked by
 
 None — can start immediately
+
+## Status
+
+Implemented

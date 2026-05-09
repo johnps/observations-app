@@ -53,3 +53,7 @@ Block lead opens the app after several hours away, logs in, presses Sync Now —
 ## Blocked by
 
 None — can start immediately
+
+## Status
+
+Implemented

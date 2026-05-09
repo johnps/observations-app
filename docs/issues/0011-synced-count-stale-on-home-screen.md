@@ -19,3 +19,7 @@ Block lead submits an observation, watches the home screen — the synced count 
 ## Blocked by
 
 None — can start immediately
+
+## Status
+
+Implemented

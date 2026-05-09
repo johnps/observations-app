@@ -24,3 +24,7 @@ Logcat shows `[sync] skipped — no session` on startup when the refresh token h
 ## Blocked by
 
 None — can start immediately
+
+## Status
+
+Implemented

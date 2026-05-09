@@ -24,3 +24,7 @@ Block lead fills in observation text, sees "GPS unavailable", taps "Retry GPS", 
 ## Blocked by
 
 Issue 0008 — GPS accuracy and timeout (retry reuses the same timeout wrapper)
+
+## Status
+
+Implemented

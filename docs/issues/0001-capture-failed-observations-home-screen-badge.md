@@ -29,3 +29,7 @@ An observation that hits MAX_RETRIES (or gets a 400) no longer silently disappea
 ## Blocked by
 
 None — can start immediately
+
+## Status
+
+Implemented

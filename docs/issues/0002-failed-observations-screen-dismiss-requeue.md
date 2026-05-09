@@ -29,3 +29,7 @@ Block lead taps the red "Failed" badge on the home screen, sees the full text of
 ## Blocked by
 
 Issue 0001 — `failed_observations` table, `markFailed`, `getFailedObservations`, and the navigation route stub must exist first
+
+## Status
+
+Implemented
