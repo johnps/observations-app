@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { TopNav } from '@/components/TopNav';
+import { PhotoLightbox } from '@/components/PhotoLightbox';
 import { getSessionRole } from '@/lib/getSessionRole';
 
 type Observation = {
@@ -15,6 +16,7 @@ type Observation = {
   gps_captured: boolean;
   gps_lat: number | null;
   gps_lng: number | null;
+  photo_urls: string[];
   tags: string[];
   submitted_at: string;
   district_name?: string;
@@ -290,6 +292,7 @@ function DistrictLeadObservationsInner() {
                       <div className="flex gap-8">
                         <div className="flex-1">
                           <span className="font-medium text-gray-700">Full text: </span>{obs.text}
+                          <PhotoLightbox urls={obs.photo_urls ?? []} />
                         </div>
                         <div>
                           <span className="font-medium text-gray-700">GPS: </span>
