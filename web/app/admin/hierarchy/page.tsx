@@ -70,26 +70,26 @@ export default function AdminHierarchyPage() {
     <>
       <TopNav role="admin" fullName={navFullName} email={navEmail} />
       <main className="p-8 max-w-2xl">
-        <h1 className="text-2xl font-semibold text-gray-800 mb-6">Hierarchy Management</h1>
+        <h1 className="text-2xl font-semibold text-slate-800 mb-6">Hierarchy Management</h1>
 
         <div className="mb-4">
           <a
             href="/api/hierarchy/template"
             download="hierarchy-template.csv"
-            className="text-sm text-blue-600 hover:underline"
+            className="text-sm text-teal-600 hover:underline"
           >
             Download template CSV
           </a>
         </div>
 
-        <div className="border-2 border-dashed border-gray-200 rounded-lg p-6 mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Upload hierarchy CSV</label>
+        <div className="border-2 border-dashed border-slate-200 rounded-lg p-6 mb-6">
+          <label className="block text-sm font-medium text-slate-700 mb-2">Upload hierarchy CSV</label>
           <input
             ref={inputRef}
             type="file"
             accept=".csv"
             onChange={handleFileChange}
-            className="text-sm text-gray-600"
+            className="text-sm text-slate-600"
           />
         </div>
 
@@ -104,9 +104,9 @@ export default function AdminHierarchyPage() {
         )}
 
         {state.phase === 'preview' && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-            <p className="text-sm font-medium text-blue-800 mb-3">Preview changes</p>
-            <div className="flex gap-6 text-sm text-blue-700 mb-4">
+          <div className="bg-teal-50 border border-teal-200 rounded-lg p-4 mb-4">
+            <p className="text-sm font-medium text-teal-800 mb-3">Preview changes</p>
+            <div className="flex gap-6 text-sm text-teal-700 mb-4">
               <span><strong>{state.preview.adds}</strong> to add</span>
               <span><strong>{state.preview.updates}</strong> to update</span>
               <span><strong>{state.preview.removes}</strong> to remove</span>
@@ -114,11 +114,11 @@ export default function AdminHierarchyPage() {
             <div className="flex gap-2">
               <button
                 onClick={handleConfirm}
-                className="px-4 py-2 bg-gray-900 text-white rounded text-sm font-medium hover:bg-gray-700"
+                className="px-4 py-2 bg-teal-700 text-white rounded text-sm font-medium hover:bg-teal-800"
               >
                 Confirm upload
               </button>
-              <button onClick={reset} className="px-4 py-2 border border-gray-300 rounded text-sm hover:bg-gray-50">
+              <button onClick={reset} className="px-4 py-2 border border-slate-300 rounded text-sm hover:bg-slate-50">
                 Cancel
               </button>
             </div>
@@ -126,7 +126,7 @@ export default function AdminHierarchyPage() {
         )}
 
         {state.phase === 'uploading' && (
-          <p className="text-sm text-gray-500">Uploading…</p>
+          <p className="text-sm text-slate-500">Uploading…</p>
         )}
 
         {state.phase === 'done' && (

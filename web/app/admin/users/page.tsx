@@ -69,14 +69,14 @@ function GeoSelect({
   }, [type]);
 
   if (!type) return null;
-  if (loading) return <span className="text-xs text-gray-400">Loading…</span>;
+  if (loading) return <span className="text-xs text-slate-400">Loading…</span>;
   if (options.length === 0) return <span className="text-xs text-amber-600">No hierarchy data yet</span>;
 
   return (
     <select
       value={value}
       onChange={e => onChange(e.target.value)}
-      className="border border-gray-300 rounded px-2 py-1 text-xs"
+      className="border border-slate-300 rounded px-2 py-1 text-xs"
     >
       <option value="">— select —</option>
       {options.map(opt => (
@@ -210,11 +210,11 @@ export default function AdminUsersPage() {
       <TopNav role="admin" fullName={navFullName} email={navEmail} />
       <main className="p-8 max-w-4xl">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold text-gray-800">User Management</h1>
+        <h1 className="text-2xl font-semibold text-slate-800">User Management</h1>
         <div className="flex items-center gap-1">
           <button
             onClick={() => setShowForm(true)}
-            className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
+            className="px-4 py-2 bg-teal-700 text-white rounded-lg text-sm font-medium hover:bg-teal-800 transition-colors"
           >
             Add User
           </button>
@@ -222,24 +222,24 @@ export default function AdminUsersPage() {
       </div>
 
       {showForm && (
-        <div className="mb-6 p-4 border border-gray-200 rounded-lg bg-white flex flex-col gap-3 max-w-md">
+        <div className="mb-6 p-4 border border-slate-200 rounded-lg bg-white flex flex-col gap-3 max-w-md">
           <div className="flex flex-col gap-1">
-            <label htmlFor="email" className="text-sm font-medium text-gray-700">Email</label>
+            <label htmlFor="email" className="text-sm font-medium text-slate-700">Email</label>
             <input
               id="email"
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              className="border border-gray-300 rounded px-3 py-2 text-sm"
+              className="border border-slate-300 rounded px-3 py-2 text-sm"
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label htmlFor="role" className="text-sm font-medium text-gray-700">Role</label>
+            <label htmlFor="role" className="text-sm font-medium text-slate-700">Role</label>
             <select
               id="role"
               value={role}
               onChange={e => setRole(e.target.value as Role)}
-              className="border border-gray-300 rounded px-3 py-2 text-sm"
+              className="border border-slate-300 rounded px-3 py-2 text-sm"
             >
               {(Object.entries(ROLE_LABELS) as [Role, string][]).map(([value, label]) => (
                 <option key={value} value={value}>{label}</option>
@@ -248,9 +248,9 @@ export default function AdminUsersPage() {
           </div>
           {geoLabel && (
             <div className="flex flex-col gap-1">
-              <label htmlFor="geography" className="text-sm font-medium text-gray-700">{geoLabel}</label>
+              <label htmlFor="geography" className="text-sm font-medium text-slate-700">{geoLabel}</label>
               {geoLoading ? (
-                <p className="text-sm text-gray-400">Loading…</p>
+                <p className="text-sm text-slate-400">Loading…</p>
               ) : geoOptions.length === 0 ? (
                 <p className="text-sm text-amber-600">No hierarchy data uploaded yet. Upload a CSV first.</p>
               ) : (
@@ -258,7 +258,7 @@ export default function AdminUsersPage() {
                   id="geography"
                   value={geography}
                   onChange={e => setGeography(e.target.value)}
-                  className="border border-gray-300 rounded px-3 py-2 text-sm"
+                  className="border border-slate-300 rounded px-3 py-2 text-sm"
                 >
                   <option value="">— select —</option>
                   {geoOptions.map(opt => (
@@ -273,13 +273,13 @@ export default function AdminUsersPage() {
             <button
               onClick={handleSave}
               disabled={saving}
-              className="px-4 py-2 bg-gray-900 text-white rounded text-sm font-medium hover:bg-gray-700 disabled:opacity-50"
+              className="px-4 py-2 bg-teal-700 text-white rounded text-sm font-medium hover:bg-teal-800 disabled:opacity-50"
             >
               Save
             </button>
             <button
               onClick={() => { setShowForm(false); setError(''); }}
-              className="px-4 py-2 border border-gray-300 rounded text-sm font-medium hover:bg-gray-50"
+              className="px-4 py-2 border border-slate-300 rounded text-sm font-medium hover:bg-slate-50"
             >
               Cancel
             </button>
@@ -289,7 +289,7 @@ export default function AdminUsersPage() {
 
       <table className="w-full text-sm border-collapse">
         <thead>
-          <tr className="border-b border-gray-200 text-left text-gray-500">
+          <tr className="border-b border-slate-200 text-left text-slate-500">
             <th className="pb-2 font-medium">Email</th>
             <th className="pb-2 font-medium">Role</th>
             <th className="pb-2 font-medium">Geography</th>
@@ -298,14 +298,14 @@ export default function AdminUsersPage() {
         </thead>
         <tbody>
           {users.map(user => (
-            <tr key={user.id} className="border-b border-gray-100">
-              <td className="py-3 text-gray-800">{user.email}</td>
-              <td className="py-3 text-gray-600">
+            <tr key={user.id} className="border-b border-slate-100">
+              <td className="py-3 text-slate-800">{user.email}</td>
+              <td className="py-3 text-slate-600">
                 {editingId === user.id ? (
                   <select
                     value={editRole}
                     onChange={e => { setEditRole(e.target.value as Role); setEditGeo(''); }}
-                    className="border border-gray-300 rounded px-2 py-1 text-xs"
+                    className="border border-slate-300 rounded px-2 py-1 text-xs"
                   >
                     {(Object.entries(ROLE_LABELS) as [Role, string][]).map(([value, label]) => (
                       <option key={value} value={value}>{label}</option>
@@ -315,7 +315,7 @@ export default function AdminUsersPage() {
                   ROLE_LABELS[user.role]
                 )}
               </td>
-              <td className="py-3 text-gray-600">
+              <td className="py-3 text-slate-600">
                 {editingId === user.id ? (
                   <GeoSelect role={editRole} value={editGeo} onChange={setEditGeo} />
                 ) : (
@@ -335,7 +335,7 @@ export default function AdminUsersPage() {
                     </button>
                     <button
                       onClick={() => setEditingId(null)}
-                      className="text-gray-400 hover:text-gray-600 text-xs"
+                      className="text-slate-400 hover:text-slate-600 text-xs"
                     >
                       Cancel
                     </button>
@@ -344,7 +344,7 @@ export default function AdminUsersPage() {
                   <span className="flex justify-end items-center gap-3">
                     <button
                       onClick={() => startEdit(user)}
-                      className="text-gray-500 hover:text-gray-700 text-xs"
+                      className="text-slate-500 hover:text-slate-700 text-xs"
                     >
                       Edit
                     </button>

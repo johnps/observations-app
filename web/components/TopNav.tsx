@@ -38,7 +38,7 @@ export function TopNav({ role, fullName, email }: Props) {
   }
 
   return (
-    <nav className="flex items-center gap-6 px-6 py-3 border-b border-gray-200 bg-white text-sm">
+    <nav className="flex items-center gap-6 px-6 py-3 bg-teal-700 text-sm">
       <div className="flex gap-4 flex-1">
         {links.map(({ href, label }) => (
           <Link
@@ -46,20 +46,20 @@ export function TopNav({ role, fullName, email }: Props) {
             href={href}
             className={
               pathname === href
-                ? 'font-semibold text-gray-900'
-                : 'text-gray-500 hover:text-gray-800'
+                ? 'font-semibold text-white'
+                : 'text-teal-200 hover:text-white transition-colors'
             }
           >
             {label}
           </Link>
         ))}
       </div>
-      <div className="flex items-center gap-4 text-xs text-gray-500">
+      <div className="flex items-center gap-4 text-xs text-teal-200">
         {fullName && <span>{fullName}</span>}
         {email && <span>{email}</span>}
         <button
           onClick={handleSignOut}
-          className="text-gray-400 hover:text-gray-600 transition"
+          className="text-teal-300 hover:text-white transition-colors"
         >
           Sign out
         </button>

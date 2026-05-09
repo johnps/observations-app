@@ -45,16 +45,16 @@ export default function AdminHome() {
     <>
       <TopNav role="admin" fullName={navFullName} email={navEmail} />
       <main className="p-8 max-w-3xl">
-        <h1 className="text-2xl font-semibold text-gray-800 mb-8">Admin</h1>
+        <h1 className="text-2xl font-semibold text-slate-800 mb-8">Admin</h1>
         <div className="grid gap-4">
           {SECTIONS.map(({ href, title, description }) => (
             <Link
               key={href}
               href={href}
-              className="block p-5 border border-gray-200 rounded-lg bg-white hover:border-gray-400 transition-colors"
+              className="block p-5 border border-slate-200 rounded-lg bg-white hover:border-teal-400 transition-colors"
             >
-              <p className="text-sm font-semibold text-gray-800 mb-1">{title}</p>
-              <p className="text-sm text-gray-500">{description}</p>
+              <p className="text-sm font-semibold text-slate-800 mb-1">{title}</p>
+              <p className="text-sm text-slate-500">{description}</p>
             </Link>
           ))}
         </div>

@@ -61,27 +61,27 @@ export default function LoginPage() {
   if (checking) {
     return (
       <main className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-400 text-sm">Loading…</p>
+        <p className="text-slate-400 text-sm">Loading…</p>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center gap-6 bg-gray-50">
-      <h1 className="text-2xl font-semibold text-gray-800">Livelihood Monitor</h1>
+    <main className="min-h-screen flex flex-col items-center justify-center gap-6 bg-slate-50">
+      <h1 className="text-2xl font-semibold text-slate-800">Livelihood Monitor</h1>
       {noAccess ? (
         <>
           <p className="text-sm text-red-600 max-w-xs text-center">
             Your account hasn&apos;t been assigned a role. Contact your administrator.
           </p>
-          <button onClick={handleSignOut} className="text-sm text-gray-400 underline">
+          <button onClick={handleSignOut} className="text-sm text-slate-400 underline">
             Sign out
           </button>
         </>
       ) : (
         <button
           onClick={handleSignIn}
-          className="flex items-center gap-3 border border-gray-200 rounded-lg px-5 py-3 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition"
+          className="flex items-center gap-3 border border-slate-200 rounded-lg px-5 py-3 text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 transition"
         >
           <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
             <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908C16.658 13.837 17.64 11.53 17.64 9.2z" fill="#4285F4"/>
