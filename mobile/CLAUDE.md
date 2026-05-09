@@ -70,6 +70,43 @@ adb install -r <path-to-apk>
 
 Samsung devices may show a Knox security scan prompt during install — dismiss or send it, the install proceeds either way.
 
+## Photo uploads to Supabase Storage (React Native / Android)
+
+React Native's fetch has two hard constraints that break the obvious upload approaches:
+
+1. **`ArrayBuffer` / `Uint8Array` cannot be used as a fetch body.** Attempting it throws at runtime:
+   `Creating blobs from 'ArrayBuffer' and 'ArrayBufferView' are not supported`
+
+2. **`supabase.storage.from(bucket).upload(path, blob)` fails with `Network request failed`** when the blob is JS-constructed (`new Blob([...])`). The Supabase JS storage client's internal fetch cannot handle JS blobs as a body on Android.
+
+The only fetch body type that works for binary uploads in React Native is a **native RN blob**, produced by `fetch('file://...').blob()`. Use the raw Supabase Storage REST API directly:
+
+```typescript
+// Read local file as native RN blob (the only uploadable binary body in RN)
+const fileRes = await fetchWithTimeout(uri, {});
+const blob = await fileRes.blob();
+
+// Use user session JWT — anon key fails the 'authenticated' RLS policy
+const { data: { session } } = await supabase.auth.getSession();
+const authToken = session?.access_token ?? SUPABASE_ANON_KEY;
+
+const uploadRes = await fetchWithTimeout(
+  `${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`,
+  {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${authToken}`,
+      apikey: SUPABASE_ANON_KEY,
+      'Content-Type': 'image/jpeg',
+      'x-upsert': 'true',   // safe to retry without duplicate errors
+    },
+    body: blob,
+  }
+);
+```
+
+Also ensure the `observation-photos` bucket has an INSERT policy for `authenticated` role — the bucket being "public" only grants read access, not write.
+
 ## Debugging lessons learned
 
 **Check device logs before hypothesizing.** When a bug survives multiple fix attempts, run `adb logcat | grep '[your-log-tag]'` before touching any code. The real error is almost always there. Every fix attempt without checking logs first is a guess.
