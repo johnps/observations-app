@@ -367,6 +367,38 @@ test('submitted observation id is a valid UUID (non-UUID ids are rejected by Sup
   expect(UUID_RE.test(id)).toBe(true);
 });
 
+// ─── Issue 0007: GPS status indicator ───────────────────────────────────────
+
+test('shows acquiring GPS status immediately on mount before fix resolves', async () => {
+  const Location = require('expo-location');
+  Location.getCurrentPositionAsync.mockReturnValue(new Promise(() => {})); // never resolves
+
+  const { getByText } = render(
+    <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
+  );
+
+  await waitFor(() => expect(getByText('Acquiring GPS…')).toBeTruthy());
+});
+
+test('shows GPS acquired status after fix resolves', async () => {
+  const { getByText } = render(
+    <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
+  );
+
+  await waitFor(() => expect(getByText('GPS acquired')).toBeTruthy());
+});
+
+test('shows GPS unavailable when location cannot be obtained', async () => {
+  const Location = require('expo-location');
+  Location.getCurrentPositionAsync.mockRejectedValue(new Error('location error'));
+
+  const { getByText } = render(
+    <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
+  );
+
+  await waitFor(() => expect(getByText(/GPS unavailable/)).toBeTruthy());
+});
+
 test('GPS fix is requested on form mount, not at submit time', async () => {
   const Location = require('expo-location');
   const { getByText } = render(

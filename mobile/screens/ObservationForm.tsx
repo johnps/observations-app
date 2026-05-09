@@ -107,6 +107,7 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
 
   const { fieldWorkers, villages } = useHierarchy(blockLeadEmail, selectedWorker);
   const locationRef = useRef<{ latitude: number; longitude: number } | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<'acquiring' | 'acquired' | 'unavailable'>('acquiring');
 
   useEffect(() => {
     Location.requestForegroundPermissionsAsync().then(() => {
@@ -114,8 +115,14 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
         if (loc) {
           locationRef.current = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
           console.log('[form] gps acquired', locationRef.current.latitude, locationRef.current.longitude);
+          setGpsStatus('acquired');
+        } else {
+          setGpsStatus('unavailable');
         }
-      }).catch(err => console.log('[form] gps error', String(err)));
+      }).catch(err => {
+        console.log('[form] gps error', String(err));
+        setGpsStatus('unavailable');
+      });
     });
     const unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
       setIsConnected(state.isConnected ?? true);
@@ -281,6 +288,11 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
 
         {photoError ? <Text style={styles.error}>{photoError}</Text> : null}
         {submitError ? <Text style={styles.error}>{submitError}</Text> : null}
+        <Text style={styles.gpsStatus}>
+          {gpsStatus === 'acquiring' ? 'Acquiring GPS…'
+            : gpsStatus === 'acquired' ? 'GPS acquired'
+            : 'GPS unavailable — observation will be submitted without location'}
+        </Text>
         <TouchableOpacity
           style={[styles.submit, submitting && styles.submitDisabled]}
           onPress={handleSubmit}
@@ -326,7 +338,8 @@ const styles = StyleSheet.create({
   photoButtons: { flexDirection: 'row', gap: 8, marginTop: 4 },
   photoButton: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 12, alignItems: 'center' },
   photoButtonText: { color: '#374151', fontSize: 14 },
-  submit: { marginTop: 24, marginBottom: 16, backgroundColor: '#111827', borderRadius: 8, padding: 14, alignItems: 'center' },
+  gpsStatus: { marginTop: 16, fontSize: 12, color: '#9ca3af', textAlign: 'center' },
+  submit: { marginTop: 8, marginBottom: 16, backgroundColor: '#111827', borderRadius: 8, padding: 14, alignItems: 'center' },
   submitDisabled: { opacity: 0.5 },
   submitText: { color: '#fff', fontWeight: '600', fontSize: 15 },
   error: { marginTop: 12, fontSize: 13, color: '#dc2626', textAlign: 'center' },
