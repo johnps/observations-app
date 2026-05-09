@@ -66,7 +66,10 @@ function DistrictLeadObservationsInner() {
   const [fTag, setFTag] = useState('');
   const [fGps, setFGps] = useState('');
 
-  useEffect(() => {
+  const [tagging, setTagging] = useState(false);
+  const [tagResult, setTagResult] = useState<string | null>(null);
+
+  function loadObservations() {
     const url = districtFilter
       ? `/api/observations?district=${encodeURIComponent(districtFilter)}`
       : '/api/observations';
@@ -83,7 +86,20 @@ function DistrictLeadObservationsInner() {
       }));
       setObservations(enriched);
     });
-  }, [districtFilter]);
+  }
+
+  useEffect(() => { loadObservations(); }, [districtFilter]);
+
+  async function handleAutoTag() {
+    if (!districtFilter) return;
+    setTagging(true);
+    setTagResult(null);
+    const res = await fetch(`/api/observations/tag?district=${encodeURIComponent(districtFilter)}`, { method: 'POST' });
+    const body = await res.json();
+    setTagResult(body.total === 0 ? 'Nothing to tag' : `${body.tagged} of ${body.total} observations tagged`);
+    setTagging(false);
+    loadObservations();
+  }
 
   useEffect(() => {
     const base = `/api/observations/stats?dimension=${dimension}&period=${period}`;
@@ -125,7 +141,24 @@ function DistrictLeadObservationsInner() {
 
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold text-gray-800">Observations</h1>
-        <SignOutButton />
+        <div className="flex items-center gap-4">
+          {districtFilter && (() => {
+            const untaggedCount = observations.filter(o => !o.tags?.length).length;
+            return (
+              <div className="flex items-center gap-2">
+                {tagResult && <span className="text-xs text-gray-500">{tagResult}</span>}
+                <button
+                  onClick={handleAutoTag}
+                  disabled={tagging}
+                  className="px-3 py-1.5 text-sm bg-gray-800 text-white rounded hover:bg-gray-700 disabled:opacity-50"
+                >
+                  {tagging ? 'Tagging…' : `Auto-tag Now${untaggedCount > 0 ? ` (${untaggedCount} untagged)` : ''}`}
+                </button>
+              </div>
+            );
+          })()}
+          <SignOutButton />
+        </div>
       </div>
 
       <div className="mb-4 flex gap-4 items-center">

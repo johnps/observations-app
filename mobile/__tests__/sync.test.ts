@@ -14,6 +14,16 @@ jest.mock('../lib/storage', () => ({
   uploadPhoto: jest.fn(),
 }));
 
+jest.mock('../lib/supabase', () => ({
+  supabase: {
+    auth: {
+      getSession: jest.fn().mockResolvedValue({
+        data: { session: { access_token: 'test-jwt' } },
+      }),
+    },
+  },
+}));
+
 const mockFileDelete = jest.fn();
 jest.mock('expo-file-system', () => ({
   File: jest.fn().mockImplementation(() => ({ delete: mockFileDelete })),
@@ -43,6 +53,7 @@ let markFailed: jest.Mock;
 let cacheHierarchy: jest.Mock;
 let incrementRetryCount: jest.Mock;
 let uploadPhoto: jest.Mock;
+let getSession: jest.Mock;
 
 function fakeObs(overrides: Partial<PendingObservation> = {}): PendingObservation {
   return {
@@ -75,6 +86,9 @@ beforeEach(() => {
   const storage = require('../lib/storage');
   uploadPhoto = storage.uploadPhoto;
 
+  const { supabase } = require('../lib/supabase');
+  getSession = supabase.auth.getSession;
+
   const sync = require('../lib/sync');
   syncPending = sync.syncPending;
   syncHierarchy = sync.syncHierarchy;
@@ -83,6 +97,16 @@ beforeEach(() => {
 });
 
 // ─── syncPending ────────────────────────────────────────────────────────────
+
+test('syncPending returns skipped: true when session is null — queue never read', async () => {
+  getSession.mockResolvedValue({ data: { session: null } });
+  (getPendingObservations as jest.Mock).mockReturnValue([fakeRow()]);
+
+  const result = await syncPending();
+
+  expect(result).toEqual({ skipped: true, synced: 0, failed: 0, errors: [] });
+  expect(getPendingObservations).not.toHaveBeenCalled();
+});
 
 test('syncPending returns zeros when queue is empty', async () => {
   (getPendingObservations as jest.Mock).mockReturnValue([]);

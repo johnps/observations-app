@@ -1,11 +1,13 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const BATCH_SIZE = 200;
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const district = req.nextUrl.searchParams.get('district');
+
   const { data: tagDefs, error: tagErr } = await supabaseAdmin
     .from('tags')
     .select('name, description')
@@ -14,10 +16,25 @@ export async function POST() {
   if (tagErr) return NextResponse.json({ error: tagErr.message }, { status: 500 });
   if (!tagDefs?.length) return NextResponse.json({ tagged: 0, total: 0 });
 
-  const { data: obs, error: obsErr } = await supabaseAdmin
+  let blockLeadEmails: string[] | null = null;
+  if (district) {
+    const { data: hier, error: hierErr } = await supabaseAdmin
+      .from('hierarchy')
+      .select('block_lead_email')
+      .eq('district_name', district)
+      .eq('status', 'active');
+    if (hierErr) return NextResponse.json({ error: hierErr.message }, { status: 500 });
+    blockLeadEmails = [...new Set((hier ?? []).map((h: { block_lead_email: string }) => h.block_lead_email))];
+    if (!blockLeadEmails.length) return NextResponse.json({ tagged: 0, total: 0 });
+    console.log(`[tagging] district=${district} resolved ${blockLeadEmails.length} block leads`);
+  }
+
+  let obsQuery = supabaseAdmin
     .from('observations')
-    .select('id, text')
-    .eq('tags', '{}')
+    .select('id, text');
+  if (blockLeadEmails) obsQuery = (obsQuery as any).in('block_lead_email', blockLeadEmails);
+  const { data: obs, error: obsErr } = await (obsQuery as any)
+    .or('tags.eq.{},tags.is.null')
     .limit(BATCH_SIZE);
 
   if (obsErr) return NextResponse.json({ error: obsErr.message }, { status: 500 });
@@ -60,7 +77,8 @@ ${obsList}`,
   for (let i = 0; i < obs.length; i++) {
     const raw = assignments[i] ?? [];
     const tags = raw.filter(t => validNames.has(t));
-    await supabaseAdmin.from('observations').update({ tags }).eq('id', obs[i].id);
+    const { error: updateErr } = await supabaseAdmin.from('observations').update({ tags }).eq('id', obs[i].id);
+    if (updateErr) { console.error('[tagging] update failed', obs[i].id, updateErr.message); continue; }
     if (tags.length > 0) tagged++;
   }
 

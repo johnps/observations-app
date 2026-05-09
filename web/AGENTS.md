@@ -28,3 +28,22 @@ jest.mock('../lib/supabase-admin', () => ({
   },
 }));
 ```
+
+When the mock factory references a `jest.fn()` defined in the outer scope, use `var` (not `const`/`let`) so the variable is hoisted before the factory evaluates:
+
+```typescript
+var mockCreate: jest.Mock;
+jest.mock('@anthropic-ai/sdk', () => {
+  mockCreate = jest.fn();
+  return jest.fn().mockImplementation(() => ({ messages: { create: mockCreate } }));
+});
+```
+
+## Tagging endpoint — district scoping
+
+`POST /api/observations/tag` accepts an optional `district` query param:
+
+- **With `?district=<name>`** — scoped run: resolves block lead emails for that district from the hierarchy table, then filters observations to those block leads only. Used by district leads.
+- **Without `district`** — global run: processes all untagged observations across all districts. Used by admin.
+
+Both runs skip already-tagged observations (`tags = '{}' OR tags IS NULL` filter). Neither makes a Claude API call if there is nothing to tag.

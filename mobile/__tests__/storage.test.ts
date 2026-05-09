@@ -53,17 +53,14 @@ test('uploadPhoto sends x-upsert header — safe to retry without duplicate erro
   expect(opts.headers['x-upsert']).toBe('true');
 });
 
-test('uploadPhoto falls back to anon key when no session', async () => {
+test('uploadPhoto throws immediately when session is null — no upload attempted', async () => {
   const { supabase } = require('../lib/supabase');
   supabase.auth.getSession.mockResolvedValue({ data: { session: null } });
-  (global.fetch as jest.Mock)
-    .mockResolvedValueOnce({ blob: () => Promise.resolve(new Blob()) })
-    .mockResolvedValueOnce({ ok: true });
 
-  await uploadPhoto('file:///tmp/photo.jpg', 'obs-123', 0);
+  await expect(uploadPhoto('file:///tmp/photo.jpg', 'obs-123', 0))
+    .rejects.toThrow('Upload failed: no authenticated session');
 
-  const [, opts] = (global.fetch as jest.Mock).mock.calls[1];
-  expect(opts.headers['Authorization']).toMatch(/^Bearer /);
+  expect(global.fetch).not.toHaveBeenCalled();
 });
 
 test('uploadPhoto throws when upload times out', async () => {

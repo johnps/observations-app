@@ -15,14 +15,16 @@ function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> 
 export async function uploadPhoto(uri: string, obsId: string, index: number): Promise<string> {
   const path = `${obsId}/${index}.jpg`;
 
+  // Use the authenticated user's JWT so the storage RLS policy (authenticated role) passes.
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Upload failed: no authenticated session');
+
   // fetch('file://...') produces a native React Native blob — the only body type
   // React Native's networking stack can upload. ArrayBuffer/Uint8Array are not supported.
   const fileRes = await fetchWithTimeout(uri, {});
   const blob = await fileRes.blob();
 
-  // Use the authenticated user's JWT so the storage RLS policy (authenticated role) passes.
-  const { data: { session } } = await supabase.auth.getSession();
-  const authToken = session?.access_token ?? SUPABASE_ANON_KEY;
+  const authToken = session.access_token;
 
   const uploadRes = await fetchWithTimeout(
     `${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`,

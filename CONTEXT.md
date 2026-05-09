@@ -144,7 +144,11 @@ The placeholder auth (four hard-coded buttons) has been removed. The placeholder
 
 **Batch size cap:** The "Auto-tag Now" call chunks observations into groups of 200 and processes them sequentially. Chunking is invisible to the user — they see a single spinner with an observation count. This is an internal implementation detail, not a user-facing concept.
 
-**Tagging run:** A single user-initiated action that tags all untagged observations for a district. At run time, the system pulls all active tags and their descriptions from the database and constructs the Claude system prompt dynamically — no separate file or document. Claude returns structured JSON assigning one or more tags per observation from the active list only. Admin edits to tag descriptions take effect on the next run automatically.
+**Tagging run — district scoped:** District leads trigger tagging from their observations page. The run is scoped to block leads assigned to their district (`POST /api/observations/tag?district=<name>`). Only untagged observations (`tags = '{}' OR tags IS NULL`) for those block leads are processed. The district lead does not need admin involvement.
+
+**Tagging run — admin global:** Admin triggers a global sweep from the Tag Definitions page (`POST /api/observations/tag` with no district param). Processes all untagged observations across all districts in one batched run. Useful for bulk catch-up. Already-tagged observations are always skipped.
+
+**Credit usage:** Each tagging run makes one Claude API call per 200 observations. The per-observation token cost is identical for scoped and global runs. District-scoped runs add a small fixed overhead (system prompt + tag list) per call compared to a single global sweep of the same observations — but at Haiku 4.5 pricing this overhead is negligible. Pressing the button when there is nothing to tag costs nothing — the route returns early before calling Claude.
 
 **Model:** Claude Haiku 4.5. Sufficient for fixed-schema classification against a short predefined list. Upgradeable to Sonnet in one line if accuracy proves inadequate.
 

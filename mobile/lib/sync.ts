@@ -2,6 +2,7 @@ import { File } from 'expo-file-system';
 import NetInfo from '@react-native-community/netinfo';
 import { getPendingObservations, markSynced, markFailed, cacheHierarchy, incrementRetryCount, MAX_RETRIES } from './db';
 import { uploadPhoto } from './storage';
+import { supabase } from './supabase';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const FETCH_TIMEOUT_MS = 30_000;
@@ -33,6 +34,12 @@ export async function syncPending(): Promise<SyncResult> {
 
   if (!_isConnected) {
     console.log('[sync] skipped — offline');
+    return { skipped: true, synced: 0, failed: 0, errors: [] };
+  }
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    console.log('[sync] skipped — no session');
     return { skipped: true, synced: 0, failed: 0, errors: [] };
   }
 

@@ -84,18 +84,20 @@ Roles are assigned manually by an admin in the webapp. Users log in via Google S
 
 ## User Journey 3: District Lead — AI Tagging of Observations
 
-**Context:** District lead tags accumulated observations to enable activity analysis.
+**Context:** District lead tags accumulated observations from her district to enable activity analysis. She does not need to ask the admin — she can trigger tagging herself at any time.
 
-**Pre-condition:** Untagged observations exist since last run. Tag definitions are loaded in the system.
+**Pre-condition:** Untagged observations exist for her district's block leads. Tag definitions are loaded in the system.
 
 **Steps:**
-1. District lead navigates to "Tag Observations" and sees a count of untagged observations with the date of the last run (e.g. "34 observations since last run on 28 Apr").
-2. She presses "Auto-tag Now." The app sends all untagged observations in a single batched API call to Claude with the tag definitions embedded in the system prompt.
+1. District lead navigates to her observations page and sees an "Auto-tag Now" button with a count of untagged observations in her district (e.g. "3 untagged observations").
+2. She presses "Auto-tag Now." The app sends all untagged observations **scoped to her district's block leads** in a single batched API call to Claude with the tag definitions embedded in the system prompt.
 3. Claude returns a structured JSON response assigning one or more tags per observation, drawn strictly from the predefined active tag list.
-4. Tags are saved immediately. Confirmation shown: "34 observations tagged."
+4. Tags are saved immediately. Confirmation shown: "3 observations tagged."
 5. Newly tagged observations are immediately available in the analysis chart (Journey 2).
 
-**Post-condition:** All observations tagged. District lead can slice activity data across any dimension.
+**Post-condition:** All of this district's untagged observations are tagged. District lead can slice activity data across any dimension without waiting for admin intervention.
+
+**Admin global run:** Admin can separately trigger a global tagging sweep from the Tag Definitions page that processes all untagged observations across all districts. This is useful for bulk catch-up runs and does not conflict with district-level runs — any already-tagged observations are skipped.
 
 ---
 
@@ -177,7 +179,8 @@ Roles are assigned manually by an admin in the webapp. Users log in via Google S
 - Google SSO authentication
 - Single frequency chart with dimension dropdowns (tag / village / block lead / period + combinations)
 - GPS flag display: ✅ / 🚩 per observation, adjustable radius (default 2km)
-- "Auto-tag Now" button: batched single API call to Claude using active tag definitions as system prompt context, returns structured JSON, saves immediately
+- **District lead "Auto-tag Now":** scoped to her district's block leads only — `POST /api/observations/tag?district=<name>`. Count shown before the button reflects only her district's untagged observations.
+- **Admin global "Auto-tag Now":** no district filter — processes all untagged observations across all districts. Located on the Tag Definitions admin page.
 - Tag definitions management page (add / edit / retire, retired tags preserved on historical data)
 - Hierarchy CSV upload with validation, preview, and merge logic
 - User management: assign roles + geographies

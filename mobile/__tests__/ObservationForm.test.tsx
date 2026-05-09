@@ -45,7 +45,7 @@ jest.mock('expo-image-manipulator', () => ({
 
 jest.mock('expo-location', () => ({
   requestForegroundPermissionsAsync: jest.fn().mockResolvedValue({ status: 'granted' }),
-  getLastKnownPositionAsync: jest.fn().mockResolvedValue({ coords: { latitude: 26.9, longitude: 75.8 } }),
+  getCurrentPositionAsync: jest.fn().mockResolvedValue({ coords: { latitude: 26.9, longitude: 75.8 } }),
 }));
 
 jest.mock('expo-file-system', () => ({
@@ -81,7 +81,7 @@ beforeEach(() => {
     }),
   });
   const Location = require('expo-location');
-  Location.getLastKnownPositionAsync.mockResolvedValue({ coords: { latitude: 26.9, longitude: 75.8 } });
+  Location.getCurrentPositionAsync.mockResolvedValue({ coords: { latitude: 26.9, longitude: 75.8 } });
 });
 
 test('observation form renders text input, STT hint, and submit button', async () => {
@@ -367,9 +367,18 @@ test('submitted observation id is a valid UUID (non-UUID ids are rejected by Sup
   expect(UUID_RE.test(id)).toBe(true);
 });
 
-test('submit proceeds without GPS fields when no cached location is available', async () => {
+test('GPS fix is requested on form mount, not at submit time', async () => {
   const Location = require('expo-location');
-  Location.getLastKnownPositionAsync.mockResolvedValue(null);
+  const { getByText } = render(
+    <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />
+  );
+  await waitFor(() => expect(Location.getCurrentPositionAsync).toHaveBeenCalled());
+  expect(getByText('Submit')).toBeTruthy();
+});
+
+test('submit proceeds without GPS fields when location is unavailable', async () => {
+  const Location = require('expo-location');
+  Location.getCurrentPositionAsync.mockResolvedValue(null);
 
   const { getByPlaceholderText, getByText, getByTestId } = render(
     <ObservationForm blockLeadEmail="test-block-lead@placeholder.local" />

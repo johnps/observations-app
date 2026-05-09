@@ -32,9 +32,13 @@ export default function LoginPage() {
       try {
         const res = await fetch(url);
         if (res.ok) {
-          const { role } = await res.json();
+          const { role, district_name } = await res.json();
           if (ROLE_ROUTES[role]) {
-            router.replace(ROLE_ROUTES[role]);
+            const base = ROLE_ROUTES[role];
+            const dest = role === 'district_lead' && district_name
+              ? `${base}?district=${encodeURIComponent(district_name)}`
+              : base;
+            router.replace(dest);
             return;
           }
           break; // role unrecognised — retrying won't help

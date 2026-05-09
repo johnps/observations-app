@@ -7,10 +7,10 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await supabaseAdmin
     .from('users')
-    .select('role')
+    .select('role, district_name')
     .eq('email', email)
     .single();
 
   if (error || !data) return NextResponse.json({ error: 'User not found' }, { status: 404 });
-  return NextResponse.json({ role: data.role });
+  return NextResponse.json({ role: data.role, district_name: data.district_name ?? null });
 }

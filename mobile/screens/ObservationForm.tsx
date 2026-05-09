@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, Image,
   StyleSheet, ActivityIndicator, ScrollView,
@@ -106,9 +106,17 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
   const [isConnected, setIsConnected] = useState(true);
 
   const { fieldWorkers, villages } = useHierarchy(blockLeadEmail, selectedWorker);
+  const locationRef = useRef<{ latitude: number; longitude: number } | null>(null);
 
   useEffect(() => {
-    Location.requestForegroundPermissionsAsync();
+    Location.requestForegroundPermissionsAsync().then(() => {
+      Location.getCurrentPositionAsync({}).then(loc => {
+        if (loc) {
+          locationRef.current = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+          console.log('[form] gps acquired', locationRef.current.latitude, locationRef.current.longitude);
+        }
+      }).catch(err => console.log('[form] gps error', String(err)));
+    });
     const unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
       setIsConnected(state.isConnected ?? true);
     });
@@ -173,18 +181,9 @@ export default function ObservationForm({ blockLeadEmail }: Props) {
     const id = Crypto.randomUUID();
     console.log('[submit] start', id);
 
-    let gps_lat: number | undefined;
-    let gps_lng: number | undefined;
-    try {
-      const loc = await Location.getLastKnownPositionAsync({ maxAge: 300_000 });
-      console.log('[submit] gps done', loc ? 'got fix' : 'no fix');
-      if (loc) {
-        gps_lat = loc.coords.latitude;
-        gps_lng = loc.coords.longitude;
-      }
-    } catch (err) {
-      console.log('[submit] gps error', String(err));
-    }
+    const gps_lat = locationRef.current?.latitude;
+    const gps_lng = locationRef.current?.longitude;
+    console.log('[submit] gps done', locationRef.current ? 'got fix' : 'no fix');
 
     try {
       const obs: PendingObservation = {
