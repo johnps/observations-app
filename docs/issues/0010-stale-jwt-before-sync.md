@@ -1,36 +1,54 @@
-# Issue 0010 — Stale JWT causes RLS violation on sync after long session gap
+# Issue 0010 — Stale JWT causes RLS violation on sync
 
-## What to build
+## Root cause
 
-After a long session gap (hours between uses), `supabase.auth.getSession()` can return a cached session object whose `access_token` has expired. The null check in `storage.ts` and `sync.ts` passes — the session is non-null — but Supabase Storage rejects the expired token with "new row violates row-level security policy". This causes all photo uploads to fail until the app is restarted.
+Two distinct failure modes, same symptom (`new row violates row-level security policy`):
 
-The fix: before using the token in `storage.ts`, check whether the access token is expired and force a refresh if so. Use `supabase.auth.getSession()` — the Supabase JS client automatically refreshes if needed when called, but only if the refresh token is valid and the client has been idle. To be safe, explicitly call `supabase.auth.refreshSession()` if `session.expires_at` is in the past or within the next 60 seconds.
+**Mode A — stale token on startup:** After a long session gap, `getSession()` returns a cached session with an expired `access_token`. The null check passes but Supabase Storage rejects the token server-side.
 
-End-to-end path:
-- `mobile/lib/storage.ts` — after `getSession()`, check `session.expires_at` and call `refreshSession()` if the token is stale. Use the refreshed session's `access_token` for the upload.
+**Mode B — silent session corruption mid-sync:** The Supabase JS client auto-refreshes tokens on a timer. If the refresh token has already been used (a prior session's refresh token was replayed), the client receives `refresh_token_already_used` and silently invalidates the session. `getSession()` still returns a non-null object but the `access_token` inside is now poisoned. The next upload fails RLS even though a previous upload in the same process succeeded minutes earlier.
+
+Both modes pass the `if (!session)` null guard — the guard is necessary but not sufficient.
 
 ## Evidence from logcat
 
 ```
-18:23:35  [sync] skipped — no session         ← getSession() returned null
-18:23:41  [storage] upload error: new row violates row-level security policy
-18:23:41  [sync] obs error: Upload failed: new row violates row-level security policy
-18:24:13  [storage] upload error: new row violates row-level security policy  ← retry also fails
+18:33:03  [storage] uploaded ok  93656380/0.jpg     ← fresh token, upload works
+18:35:44  [storage] upload error: new row violates row-level security policy
+                                                     ← same session, 2.5 min later
+                                                     ← Supabase auto-refresh failed
+                                                     ← with refresh_token_already_used
+                                                     ← token silently poisoned
 ```
 
-Six seconds after `getSession()` returned null, a second sync trigger fired, `getSession()` now returned a cached (expired) session, null check passed, expired token sent to Storage REST API — rejected by RLS.
+## What to build
+
+**In `storage.ts`**, replace the bare `getSession()` call with a helper that:
+1. Calls `getSession()`
+2. If session is null → throw `'Upload failed: no authenticated session'`
+3. If `session.expires_at` is within 60 seconds → call `refreshSession()`
+4. If `refreshSession()` fails → throw `'Upload failed: no authenticated session'`
+5. Use the (possibly refreshed) `access_token` for the upload
+
+**In `sync.ts`**, when `syncPending()` catches an upload error that contains "no authenticated session", treat it as a permanent auth failure for this sync run — log it, stop the run (don't retry further observations), and return `{ skipped: true }`. Retrying further observations with the same poisoned session will only produce more failures.
+
+End-to-end path:
+- `mobile/lib/storage.ts` — token freshness check before every upload
+- `mobile/lib/sync.ts` — detect auth failure mid-run, abort cleanly
+- `mobile/__tests__/storage.test.ts` — new tests for both failure modes
+- `mobile/__tests__/sync.test.ts` — new test for auth failure mid-run abort
 
 ## Demoable as
 
-Block lead opens the app after several hours away, logs in, presses Sync Now — pending observations upload successfully without an RLS error in logcat.
+Block lead opens the app after several hours away, logs in, presses Sync Now — pending observations upload successfully. If the refresh token is also stale, the sync aborts cleanly with a log entry rather than burning through retries with repeated RLS errors.
 
 ## Acceptance criteria
 
-- [ ] `storage.ts` checks `session.expires_at` after `getSession()`
-- [ ] If the token is expired or expiring within 60 seconds, `refreshSession()` is called and the refreshed token is used
-- [ ] If `refreshSession()` fails (e.g. refresh token also expired), throws `'Upload failed: no authenticated session'` — same path as null session
-- [ ] Unit tests cover: valid non-expired token (no refresh), expired token (refresh called, upload uses new token), refresh fails (throws)
-- [ ] RLS violation no longer appears in logcat after a long session gap
+- [ ] `storage.ts` checks `expires_at` and calls `refreshSession()` when token is within 60 s of expiry
+- [ ] If `refreshSession()` fails, throws `'Upload failed: no authenticated session'`
+- [ ] `sync.ts` detects `'no authenticated session'` errors mid-run and aborts remaining observations for that run
+- [ ] Unit tests: valid non-expired token (no refresh called), expired token (refresh called, uses new token), refresh fails (throws), sync aborts on auth error
+- [ ] No repeated RLS violations in logcat — at most one error per sync run, then clean abort
 
 ## Blocked by
 
