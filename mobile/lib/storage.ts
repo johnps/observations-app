@@ -1,32 +1,26 @@
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
-const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
+import { supabase } from './supabase';
+
 const BUCKET = 'observation-photos';
 const UPLOAD_TIMEOUT_MS = 60_000;
 
-function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
-  return fetch(url, { ...options, signal: controller.signal })
-    .finally(() => clearTimeout(timer));
-}
-
 export async function uploadPhoto(uri: string, obsId: string, index: number): Promise<string> {
   const path = `${obsId}/${index}.jpg`;
-  const fileRes = await fetchWithTimeout(uri, {});
-  const blob = await fileRes.blob();
 
-  const uploadRes = await fetchWithTimeout(
-    `${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type': 'image/jpeg',
-      },
-      body: blob,
-    }
-  );
+  const fileRes = await Promise.race([
+    fetch(uri),
+    new Promise<never>((_, rej) => setTimeout(() => rej(new Error('Read timeout')), UPLOAD_TIMEOUT_MS)),
+  ]);
+  const blob = await (fileRes as Response).blob();
 
-  if (!uploadRes.ok) throw new Error(`Upload failed: ${uploadRes.status}`);
-  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${path}`;
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(path, blob, { contentType: 'image/jpeg', upsert: true });
+
+  if (error) {
+    console.log('[storage] upload error', error.message);
+    throw new Error(`Upload failed: ${error.message}`);
+  }
+
+  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
+  return data.publicUrl;
 }

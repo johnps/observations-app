@@ -1,46 +1,70 @@
 import { uploadPhoto } from '../lib/storage';
 
+const mockUpload = jest.fn();
+const mockGetPublicUrl = jest.fn();
+
+jest.mock('../lib/supabase', () => ({
+  supabase: {
+    storage: {
+      from: jest.fn(() => ({
+        upload: mockUpload,
+        getPublicUrl: mockGetPublicUrl,
+      })),
+    },
+  },
+}));
+
 beforeEach(() => {
+  jest.clearAllMocks();
   (global.fetch as jest.Mock) = jest.fn();
+
+  mockUpload.mockResolvedValue({ error: null });
+  mockGetPublicUrl.mockReturnValue({
+    data: { publicUrl: 'https://supabase.co/storage/v1/object/public/observation-photos/obs-123/0.jpg' },
+  });
 });
 
-test('uploadPhoto POSTs to Supabase Storage with auth header and returns public URL', async () => {
-  // fetch called twice: once to read the local file, once to upload
-  (global.fetch as jest.Mock)
-    .mockResolvedValueOnce({ blob: () => Promise.resolve(new Blob(['img'], { type: 'image/jpeg' })) })
-    .mockResolvedValueOnce({ ok: true });
+test('uploadPhoto reads local file, uploads via Supabase client, and returns public URL', async () => {
+  (global.fetch as jest.Mock).mockResolvedValueOnce({
+    blob: () => Promise.resolve(new Blob(['img'], { type: 'image/jpeg' })),
+  });
 
   const url = await uploadPhoto('file:///tmp/photo.jpg', 'obs-123', 0);
 
-  const uploadCall = (global.fetch as jest.Mock).mock.calls[1];
-  expect(uploadCall[0]).toContain('/storage/v1/object/observation-photos/obs-123/0.jpg');
-  expect(uploadCall[1].headers['Authorization']).toMatch(/^Bearer /);
+  expect(mockUpload).toHaveBeenCalledWith(
+    'obs-123/0.jpg',
+    expect.any(Blob),
+    { contentType: 'image/jpeg', upsert: true },
+  );
   expect(url).toContain('obs-123/0.jpg');
 });
 
-test('uploadPhoto throws when upload response is not ok', async () => {
-  (global.fetch as jest.Mock)
-    .mockResolvedValueOnce({ blob: () => Promise.resolve(new Blob()) })
-    .mockResolvedValueOnce({ ok: false, status: 403 });
+test('uploadPhoto throws when Supabase upload returns an error', async () => {
+  (global.fetch as jest.Mock).mockResolvedValueOnce({
+    blob: () => Promise.resolve(new Blob()),
+  });
+  mockUpload.mockResolvedValue({ error: { message: 'Bucket not found' } });
 
   await expect(uploadPhoto('file:///tmp/photo.jpg', 'obs-123', 0)).rejects.toThrow('Upload failed');
 });
 
-// Issue C: upload timeout
-test('uploadPhoto throws when upload times out', async () => {
-  jest.useFakeTimers();
-  (global.fetch as jest.Mock).mockImplementation((_url: string, options: RequestInit) =>
-    new Promise((_resolve, reject) => {
-      options?.signal?.addEventListener('abort', () =>
-        reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }))
-      );
-    })
-  );
+test('uploadPhoto upserts — does not fail when file already exists', async () => {
+  (global.fetch as jest.Mock).mockResolvedValueOnce({
+    blob: () => Promise.resolve(new Blob(['img'])),
+  });
+  // upsert: true means Supabase replaces existing files without error
+  mockUpload.mockResolvedValue({ error: null });
 
-  const uploadPromise = uploadPhoto('file:///tmp/photo.jpg', 'obs-123', 0);
-  // Attach the assertion before advancing time so the rejection handler is in place
-  // when the AbortController fires — avoids an unhandled-rejection warning.
-  const assertion = expect(uploadPromise).rejects.toThrow();
+  await expect(uploadPhoto('file:///tmp/photo.jpg', 'obs-123', 0)).resolves.toBeDefined();
+  expect(mockUpload).toHaveBeenCalledWith(expect.any(String), expect.any(Blob), expect.objectContaining({ upsert: true }));
+});
+
+test('uploadPhoto throws when local file read times out', async () => {
+  jest.useFakeTimers();
+  (global.fetch as jest.Mock).mockImplementation(() => new Promise(() => {})); // never resolves
+
+  const promise = uploadPhoto('file:///tmp/photo.jpg', 'obs-123', 0);
+  const assertion = expect(promise).rejects.toThrow('Read timeout');
   await jest.advanceTimersByTimeAsync(61_000);
   await assertion;
   jest.useRealTimers();
