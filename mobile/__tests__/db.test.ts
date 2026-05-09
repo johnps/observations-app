@@ -1,4 +1,5 @@
-import { initDB, queueObservation, getPendingObservations, markSynced, cacheHierarchy, getCachedFieldWorkers, getCachedVillages, incrementRetryCount, MAX_RETRIES } from '../lib/db';
+import { initDB, queueObservation, getPendingObservations, markSynced, markFailed, getFailedObservations, cacheHierarchy, getCachedFieldWorkers, getCachedVillages, incrementRetryCount, MAX_RETRIES } from '../lib/db';
+import type { PendingObservation } from '../types/observation';
 
 jest.mock('expo-sqlite');
 
@@ -82,4 +83,33 @@ test('getPendingObservations excludes observations that have reached MAX_RETRIES
 
   const pending = getPendingObservations();
   expect(pending.map(o => o.id)).toEqual(['good']);
+});
+
+const fakeObs = (id: string): PendingObservation => ({
+  id,
+  text: 'test obs',
+  field_worker_name: 'W',
+  village_name: 'V',
+  block_lead_email: 'e@e.com',
+  photo_uris: [],
+  submitted_at: '2024-01-01T00:00:00Z',
+});
+
+test('markFailed removes observation from pending queue', () => {
+  const obs = fakeObs('fail-2');
+  queueObservation(obs);
+  expect(getPendingObservations()).toHaveLength(1);
+  markFailed(obs, 'invalid data');
+  expect(getPendingObservations()).toHaveLength(0);
+});
+
+test('markFailed stores observation in failed list', () => {
+  const obs = fakeObs('fail-1');
+  queueObservation(obs);
+  markFailed(obs, 'max retries exceeded');
+  const failed = getFailedObservations();
+  expect(failed).toHaveLength(1);
+  expect(failed[0].id).toBe('fail-1');
+  expect(failed[0].reason).toBe('max retries exceeded');
+  expect(JSON.parse(failed[0].payload).text).toBe('test obs');
 });

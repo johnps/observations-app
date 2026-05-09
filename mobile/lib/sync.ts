@@ -1,6 +1,6 @@
 import { File } from 'expo-file-system';
 import NetInfo from '@react-native-community/netinfo';
-import { getPendingObservations, markSynced, cacheHierarchy, incrementRetryCount, MAX_RETRIES } from './db';
+import { getPendingObservations, markSynced, markFailed, cacheHierarchy, incrementRetryCount, MAX_RETRIES } from './db';
 import { uploadPhoto } from './storage';
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
@@ -80,14 +80,15 @@ export async function syncPending(): Promise<SyncResult> {
             try { new File(uri).delete(); } catch {}
           }
           const body = await res.json().catch(() => ({}));
-          errors.push(`Discarded observation ${obs.id}: ${body.error ?? 'invalid data'}`);
-          markSynced(obs.id);
+          const reason = body.error ?? 'invalid data';
+          errors.push(`Observation ${obs.id}: ${reason}`);
+          markFailed(obs, reason);
           failed++;
         } else {
           const newCount = incrementRetryCount(obs.id);
           if (newCount >= MAX_RETRIES) {
-            errors.push(`Discarded observation ${obs.id}: max retries exceeded`);
-            markSynced(obs.id);
+            errors.push(`Observation ${obs.id}: max retries exceeded`);
+            markFailed(obs, 'max retries exceeded');
           }
           failed++;
         }
@@ -95,8 +96,8 @@ export async function syncPending(): Promise<SyncResult> {
         console.log('[sync] obs error', String(err));
         const newCount = incrementRetryCount(obs.id);
         if (newCount >= MAX_RETRIES) {
-          errors.push(`Discarded observation ${obs.id}: max retries exceeded`);
-          markSynced(obs.id);
+          errors.push(`Observation ${obs.id}: max retries exceeded`);
+          markFailed(obs, 'max retries exceeded');
         }
         failed++;
       }

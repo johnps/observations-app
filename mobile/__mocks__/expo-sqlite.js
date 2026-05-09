@@ -1,12 +1,17 @@
 let _store = {};
 let _hierarchyCache = [];
+let _failedStore = {};
 
 const _db = {
   execSync: jest.fn(),
   withTransactionSync: jest.fn((cb) => cb()),
   runSync: jest.fn((sql, params) => {
     const s = sql.toUpperCase();
-    if (s.includes('INSERT OR REPLACE')) {
+    if (s.includes('INSERT OR REPLACE INTO FAILED_OBSERVATIONS')) {
+      _failedStore[params[0]] = { id: params[0], payload: params[1], reason: params[2], failed_at: params[3] };
+    } else if (s.includes('DELETE FROM FAILED_OBSERVATIONS')) {
+      delete _failedStore[params[0]];
+    } else if (s.includes('INSERT OR REPLACE')) {
       _store[params[0]] = { id: params[0], payload: params[1], synced: 0, retry_count: 0 };
     } else if (s.includes('UPDATE') && s.includes('SYNCED = 1')) {
       if (_store[params[0]]) _store[params[0]].synced = 1;
@@ -35,6 +40,9 @@ const _db = {
       const row = _store[params[0]];
       return row ? [{ retry_count: row.retry_count ?? 0 }] : [];
     }
+    if (s.includes('FROM FAILED_OBSERVATIONS')) {
+      return Object.values(_failedStore);
+    }
     return Object.values(_store).filter(r => r.synced === 0 && (r.retry_count ?? 0) < 5);
   }),
 };
@@ -47,6 +55,7 @@ module.exports = {
   _reset() {
     _store = {};
     _hierarchyCache = [];
+    _failedStore = {};
     openDatabaseSync.mockClear();
     _db.execSync.mockClear();
     _db.withTransactionSync.mockClear();

@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { PendingObservation } from '../types/observation';
+import type { PendingObservation, FailedObservation } from '../types/observation';
 
 let db: SQLite.SQLiteDatabase;
 
@@ -14,6 +14,9 @@ export function initDB() {
   try {
     db.execSync('ALTER TABLE pending_observations ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0');
   } catch {}
+  db.execSync(`CREATE TABLE IF NOT EXISTS failed_observations (
+    id TEXT PRIMARY KEY, payload TEXT NOT NULL, reason TEXT NOT NULL, failed_at TEXT NOT NULL
+  )`);
   db.execSync(`CREATE TABLE IF NOT EXISTS hierarchy_cache (
     block_lead_email TEXT NOT NULL,
     field_worker_name TEXT NOT NULL,
@@ -57,6 +60,22 @@ export function incrementRetryCount(id: string): number {
     [id]
   );
   return rows[0]?.retry_count ?? 1;
+}
+
+export function markFailed(obs: PendingObservation, reason: string) {
+  db.withTransactionSync(() => {
+    db.runSync(
+      'INSERT OR REPLACE INTO failed_observations (id, payload, reason, failed_at) VALUES (?, ?, ?, ?)',
+      [obs.id, JSON.stringify(obs), reason, new Date().toISOString()]
+    );
+    db.runSync('UPDATE pending_observations SET synced = 1 WHERE id = ?', [obs.id]);
+  });
+}
+
+export function getFailedObservations(): FailedObservation[] {
+  return db.getAllSync<FailedObservation>(
+    'SELECT id, payload, reason, failed_at FROM failed_observations'
+  );
 }
 
 export function cacheHierarchy(blockLeadEmail: string, rows: { field_worker_name: string; village_name: string }[]) {

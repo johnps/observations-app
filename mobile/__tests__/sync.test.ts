@@ -4,6 +4,7 @@ import type { PendingObservation } from '../types/observation';
 jest.mock('../lib/db', () => ({
   getPendingObservations: jest.fn(),
   markSynced: jest.fn(),
+  markFailed: jest.fn(),
   cacheHierarchy: jest.fn(),
   incrementRetryCount: jest.fn().mockReturnValue(1),
   MAX_RETRIES: 5,
@@ -38,6 +39,7 @@ let syncPending: () => Promise<SyncResult>;
 let syncHierarchy: (email: string) => Promise<void>;
 let getPendingObservations: jest.Mock;
 let markSynced: jest.Mock;
+let markFailed: jest.Mock;
 let cacheHierarchy: jest.Mock;
 let incrementRetryCount: jest.Mock;
 let uploadPhoto: jest.Mock;
@@ -66,6 +68,7 @@ beforeEach(() => {
   const db = require('../lib/db');
   getPendingObservations = db.getPendingObservations;
   markSynced = db.markSynced;
+  markFailed = db.markFailed;
   cacheHierarchy = db.cacheHierarchy;
   incrementRetryCount = db.incrementRetryCount;
 
@@ -134,7 +137,7 @@ test('syncPending stays in queue when server returns 500 (non-UUID id was the ro
   expect(result.failed).toBe(1);
 });
 
-test('syncPending discards observation and deletes photos on 400', async () => {
+test('syncPending moves observation to failed list and deletes photos on 400', async () => {
   const { File } = require('expo-file-system');
   const obs = fakeObs({ photo_uris: ['file:///docs/obs_photos/a.jpg'] });
   (getPendingObservations as jest.Mock).mockReturnValue([fakeRow(obs)]);
@@ -148,7 +151,8 @@ test('syncPending discards observation and deletes photos on 400', async () => {
 
   expect(File).toHaveBeenCalledWith('file:///docs/obs_photos/a.jpg');
   expect(mockFileDelete).toHaveBeenCalled();
-  expect(markSynced).toHaveBeenCalledWith(obs.id);
+  expect(markSynced).not.toHaveBeenCalled();
+  expect(markFailed).toHaveBeenCalledWith(obs, 'missing field');
   expect(result).toMatchObject({ synced: 0, failed: 1 });
   expect(result.errors[0]).toContain('missing field');
 });
@@ -406,7 +410,7 @@ test('syncPending increments retry_count on transient failure', async () => {
   expect(markSynced).not.toHaveBeenCalled();
 });
 
-test('syncPending permanently discards and reports error when retry cap is reached', async () => {
+test('syncPending moves observation to failed list when retry cap is reached', async () => {
   const obs = fakeObs();
   (getPendingObservations as jest.Mock).mockReturnValue([fakeRow(obs)]);
   (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 500 });
@@ -414,7 +418,8 @@ test('syncPending permanently discards and reports error when retry cap is reach
 
   const result = await syncPending();
 
-  expect(markSynced).toHaveBeenCalledWith(obs.id);
+  expect(markSynced).not.toHaveBeenCalled();
+  expect(markFailed).toHaveBeenCalledWith(obs, 'max retries exceeded');
   expect(result.errors[0]).toContain(obs.id);
   expect(result.failed).toBe(1);
 });

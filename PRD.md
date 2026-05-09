@@ -54,8 +54,11 @@ Roles are assigned manually by an admin in the webapp. Users log in via Google S
 7. App silently captures GPS coordinates and timestamp in the background.
 8. Block lead taps "Submit."
 9. If offline, the observation is saved locally and syncs automatically when connectivity returns.
+10. If the observation repeatedly fails to sync (e.g. network errors over an extended period), it is moved to a "Failed Observations" list rather than silently discarded. The block lead is notified and can review the full content of the failed observation, then re-submit it manually.
 
 **Post-condition:** Observation stored with: text, photos, GPS coordinates, timestamp, selected field worker, selected village, block lead identity. GPS coordinates accumulate against village names over time for future use.
+
+**Failure post-condition:** If the observation cannot be synced after the maximum number of retries, its full content is preserved and visible in "Failed Observations" so the block lead can re-submit. The observation is never silently lost.
 
 ---
 

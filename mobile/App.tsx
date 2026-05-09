@@ -3,7 +3,7 @@ import { ActivityIndicator, AppState, View, Text, TouchableOpacity, StyleSheet }
 import NetInfo from '@react-native-community/netinfo';
 import { NavigationContainer, useFocusEffect, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator, NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { initDB, getPendingObservations } from './lib/db';
+import { initDB, getPendingObservations, getFailedObservations } from './lib/db';
 import { syncPending, syncHierarchy } from './lib/sync';
 import { supabase } from './lib/supabase';
 import LoginScreen from './screens/LoginScreen';
@@ -15,6 +15,7 @@ export type RootStackParamList = {
   BlockLeadHome: { email: string; submitKey?: number; isOnline?: boolean };
   ObservationForm: { email: string };
   MyObservations: { email: string };
+  FailedObservations: { email: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -26,6 +27,7 @@ function BlockLeadHomeScreen({ route }: { route: { params: { email: string; subm
   const [banner, setBanner] = useState('');
   const [pendingCount, setPendingCount] = useState(0);
   const [syncedCount, setSyncedCount] = useState<number | null>(null);
+  const [failedCount, setFailedCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState('');
 
@@ -40,11 +42,14 @@ function BlockLeadHomeScreen({ route }: { route: { params: { email: string; subm
     } catch { /* offline — leave synced count as-is */ }
   }, [email]);
 
-  // Full count refresh (including API) on focus; local pending count polls every 3s so
+  // Full count refresh (including API) on focus; local counts poll every 3s so
   // background syncs (AppState, NetInfo, post-submit) are reflected without manual tap.
   useFocusEffect(useCallback(() => {
     loadCounts();
-    const id = setInterval(() => setPendingCount(getPendingObservations().length), 3_000);
+    const id = setInterval(() => {
+      setPendingCount(getPendingObservations().length);
+      setFailedCount(getFailedObservations().length);
+    }, 3_000);
     return () => clearInterval(id);
   }, [loadCounts]));
 
@@ -62,8 +67,15 @@ function BlockLeadHomeScreen({ route }: { route: { params: { email: string; subm
     try {
       const result = await syncPending();
       await loadCounts();
-      if (result.failed > 0) {
-        setSyncError(`${result.failed} observation${result.failed > 1 ? 's' : ''} failed to sync — will retry automatically.`);
+      const discarded = result.errors.length;
+      const willRetry = result.failed - discarded;
+      if (discarded > 0) {
+        setSyncError(
+          `${discarded} observation${discarded > 1 ? 's' : ''} could not be synced and ${discarded > 1 ? 'were' : 'was'} permanently discarded — please re-submit.` +
+          (willRetry > 0 ? ` ${willRetry} other${willRetry > 1 ? 's' : ''} will retry automatically.` : '')
+        );
+      } else if (willRetry > 0) {
+        setSyncError(`${willRetry} observation${willRetry > 1 ? 's' : ''} failed to sync — will retry automatically.`);
       }
     } finally {
       setSyncing(false);
@@ -121,6 +133,22 @@ function BlockLeadHomeScreen({ route }: { route: { params: { email: string; subm
         onPress={() => navigation.navigate('MyObservations', { email })}
       >
         <Text style={styles.secondaryButtonText}>My Observations</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.secondaryButton, failedCount > 0 && styles.failedButton]}
+        onPress={() => navigation.navigate('FailedObservations', { email })}
+      >
+        <View style={styles.failedButtonRow}>
+          <Text style={[styles.secondaryButtonText, failedCount > 0 && styles.failedButtonText]}>
+            Failed Observations
+          </Text>
+          {failedCount > 0 && (
+            <View style={styles.failedBadge}>
+              <Text style={styles.failedBadgeText}>{failedCount}</Text>
+            </View>
+          )}
+        </View>
       </TouchableOpacity>
 
       <TouchableOpacity onPress={handleSignOut}>
@@ -184,6 +212,13 @@ export default function App() {
         <Stack.Screen name="MyObservations" options={{ headerShown: true, title: 'My Observations' }}>
           {({ route }) => <MyObservations blockLeadEmail={(route.params as any).email} />}
         </Stack.Screen>
+        <Stack.Screen name="FailedObservations" options={{ headerShown: true, title: 'Failed Observations' }}>
+          {() => (
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ color: '#9ca3af', fontSize: 14 }}>No failed observations</Text>
+            </View>
+          )}
+        </Stack.Screen>
       </Stack.Navigator>
     </NavigationContainer>
   );
@@ -212,5 +247,10 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: '#fff', fontWeight: '600', textAlign: 'center' },
   secondaryButton: { width: 240, borderWidth: 1, borderColor: '#e5e7eb', paddingVertical: 14, paddingHorizontal: 24, borderRadius: 8 },
   secondaryButtonText: { color: '#374151', fontWeight: '500', textAlign: 'center' },
+  failedButton: { borderColor: '#fca5a5', backgroundColor: '#fff7f7' },
+  failedButtonText: { color: '#dc2626' },
+  failedButtonRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  failedBadge: { backgroundColor: '#dc2626', borderRadius: 10, minWidth: 20, paddingHorizontal: 5, paddingVertical: 1 },
+  failedBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700', textAlign: 'center' },
   signOut: { color: '#9ca3af', fontSize: 13, marginTop: 8 },
 });
