@@ -150,3 +150,7 @@ jest.mock('@react-native-community/netinfo', () => ({
 ```
 
 Without `__esModule: true`, `NetInfo.fetch` resolves to `undefined` and every call throws `TypeError: _netinfo.default.fetch is not a function`.
+
+## expo-sqlite mock — `runSync` branch order matters
+
+`__mocks__/expo-sqlite.js` dispatches SQL operations via a chain of `if/else if` on the uppercased SQL string. The generic `INSERT OR REPLACE` check fires before any table-specific checks below it. When adding support for a new table, add the new `else if` branch **before** the generic `INSERT OR REPLACE` branch — otherwise the new table's inserts will be silently routed to `_store` instead of the correct store.
