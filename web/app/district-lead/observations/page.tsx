@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { SignOutButton } from '@/components/SignOutButton';
+import { TopNav } from '@/components/TopNav';
 import { getSessionRole } from '@/lib/getSessionRole';
 
 type Observation = {
@@ -56,13 +56,17 @@ function DistrictLeadObservationsInner() {
   const urlDistrict = searchParams.get('district');
 
   const [sessionDistrict, setSessionDistrict] = useState<string | null>(null);
+  const [navFullName, setNavFullName] = useState<string | null>(null);
+  const [navEmail, setNavEmail] = useState<string | null>(null);
   const districtFilter = fromStateLead ? urlDistrict : sessionDistrict;
 
   useEffect(() => {
     if (fromStateLead) return;
-    getSessionRole().then(({ role, district_name }) => {
+    getSessionRole().then(({ role, district_name, fullName, email }) => {
       if (role !== 'district_lead') { router.replace('/'); return; }
       setSessionDistrict(district_name);
+      setNavFullName(fullName);
+      setNavEmail(email);
     });
   }, [fromStateLead, router]);
 
@@ -145,7 +149,9 @@ function DistrictLeadObservationsInner() {
   const hasFilters = fDistrict || fBlock || fBlockLead || fFieldWorker || fVillage || fTag || fGps;
 
   return (
-    <main className="p-8 max-w-7xl">
+    <>
+      {!fromStateLead && <TopNav role="district_lead" fullName={navFullName} email={navEmail} />}
+      <main className="p-8 max-w-7xl">
       {fromStateLead && districtFilter && (
         <p className="text-sm text-gray-500 mb-2">
           <a href="/state-lead" className="text-gray-400 hover:text-gray-700">← State Overview</a>
@@ -171,7 +177,6 @@ function DistrictLeadObservationsInner() {
               </div>
             );
           })()}
-          <SignOutButton />
         </div>
       </div>
 
@@ -306,7 +311,8 @@ function DistrictLeadObservationsInner() {
           </tbody>
         </table>
       </div>
-    </main>
+      </main>
+    </>
   );
 }
 

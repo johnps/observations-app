@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { SignOutButton } from '@/components/SignOutButton';
+import { useRouter } from 'next/navigation';
+import { TopNav } from '@/components/TopNav';
+import { getSessionRole } from '@/lib/getSessionRole';
 
 type Role = 'admin' | 'district_lead' | 'block_lead' | 'state_lead';
 
@@ -85,6 +87,9 @@ function GeoSelect({
 }
 
 export default function AdminUsersPage() {
+  const router = useRouter();
+  const [navFullName, setNavFullName] = useState<string | null>(null);
+  const [navEmail, setNavEmail] = useState<string | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [email, setEmail] = useState('');
@@ -106,6 +111,14 @@ export default function AdminUsersPage() {
     const body = await res.json();
     setUsers(body.users ?? []);
   }
+
+  useEffect(() => {
+    getSessionRole().then(({ role, fullName, email }) => {
+      if (role !== 'admin') { router.replace('/'); return; }
+      setNavFullName(fullName);
+      setNavEmail(email);
+    });
+  }, [router]);
 
   useEffect(() => { loadUsers(); }, []);
 
@@ -193,17 +206,18 @@ export default function AdminUsersPage() {
   const geoLabel = GEOGRAPHY_LABEL[role];
 
   return (
-    <main className="p-8 max-w-4xl">
+    <>
+      <TopNav role="admin" fullName={navFullName} email={navEmail} />
+      <main className="p-8 max-w-4xl">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold text-gray-800">User Management</h1>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-1">
           <button
             onClick={() => setShowForm(true)}
             className="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
           >
             Add User
           </button>
-          <SignOutButton />
         </div>
       </div>
 
@@ -347,6 +361,7 @@ export default function AdminUsersPage() {
           ))}
         </tbody>
       </table>
-    </main>
+      </main>
+    </>
   );
 }

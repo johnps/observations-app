@@ -13,9 +13,9 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
-test('returns role and district_name when session exists and role API responds', async () => {
+test('returns role, district_name, fullName, email when session exists and role API responds', async () => {
   mockGetSession.mockResolvedValue({
-    data: { session: { user: { email: 'lead@example.com' } } },
+    data: { session: { user: { email: 'lead@example.com', user_metadata: { full_name: 'Priya Sharma' } } } },
   });
   mockFetch.mockResolvedValue({
     ok: true,
@@ -24,7 +24,7 @@ test('returns role and district_name when session exists and role API responds',
 
   const result = await getSessionRole();
 
-  expect(result).toEqual({ role: 'district_lead', district_name: 'Latehar' });
+  expect(result).toEqual({ role: 'district_lead', district_name: 'Latehar', fullName: 'Priya Sharma', email: 'lead@example.com' });
   expect(mockFetch).toHaveBeenCalledWith(
     '/api/users/role?email=lead%40example.com'
   );
@@ -35,28 +35,28 @@ test('returns null role when session is null', async () => {
 
   const result = await getSessionRole();
 
-  expect(result).toEqual({ role: null, district_name: null });
+  expect(result).toEqual({ role: null, district_name: null, fullName: null, email: null });
   expect(mockFetch).not.toHaveBeenCalled();
 });
 
 test('returns null role when role API returns non-ok', async () => {
   mockGetSession.mockResolvedValue({
-    data: { session: { user: { email: 'lead@example.com' } } },
+    data: { session: { user: { email: 'lead@example.com', user_metadata: { full_name: 'Priya Sharma' } } } },
   });
   mockFetch.mockResolvedValue({ ok: false });
 
   const result = await getSessionRole();
 
-  expect(result).toEqual({ role: null, district_name: null });
+  expect(result).toEqual({ role: null, district_name: null, fullName: 'Priya Sharma', email: 'lead@example.com' });
 });
 
 test('returns null role when fetch throws', async () => {
   mockGetSession.mockResolvedValue({
-    data: { session: { user: { email: 'lead@example.com' } } },
+    data: { session: { user: { email: 'lead@example.com', user_metadata: { full_name: 'Priya Sharma' } } } },
   });
   mockFetch.mockRejectedValue(new Error('network error'));
 
   const result = await getSessionRole();
 
-  expect(result).toEqual({ role: null, district_name: null });
+  expect(result).toEqual({ role: null, district_name: null, fullName: 'Priya Sharma', email: 'lead@example.com' });
 });

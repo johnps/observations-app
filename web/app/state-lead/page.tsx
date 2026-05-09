@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { getSessionRole } from '@/lib/getSessionRole';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { SignOutButton } from '@/components/SignOutButton';
+import { TopNav } from '@/components/TopNav';
 
 type Stat = { name: string; count: number };
 type Period = 'this_month' | 'last_month' | 'last_3_months' | 'last_6_months';
@@ -56,6 +56,8 @@ function ColFilter({ options, value, onChange }: { options: string[]; value: str
 export default function StateLeadDashboard() {
   const router = useRouter();
   const [authChecked, setAuthChecked] = useState(false);
+  const [navFullName, setNavFullName] = useState<string | null>(null);
+  const [navEmail, setNavEmail] = useState<string | null>(null);
   const [stats, setStats] = useState<Stat[]>([]);
   const [period, setPeriod] = useState<Period>('this_month');
   const [dimension, setDimension] = useState<Dimension>('district');
@@ -71,9 +73,11 @@ export default function StateLeadDashboard() {
   const [fGps, setFGps] = useState('');
 
   useEffect(() => {
-    getSessionRole().then(({ role }) => {
+    getSessionRole().then(({ role, fullName, email }) => {
       if (role !== 'state_lead') { router.replace('/'); return; }
       setAuthChecked(true);
+      setNavFullName(fullName);
+      setNavEmail(email);
     });
   }, [router]);
 
@@ -133,7 +137,9 @@ export default function StateLeadDashboard() {
   if (!authChecked) return null;
 
   return (
-    <main className="p-8 max-w-6xl">
+    <>
+      <TopNav role="state_lead" fullName={navFullName} email={navEmail} />
+      <main className="p-8 max-w-6xl">
       <div className="flex items-center gap-4 mb-6">
         <h1 className="text-2xl font-semibold text-gray-800 flex-1">State Overview</h1>
         <label className="text-sm font-medium text-gray-600">
@@ -154,7 +160,6 @@ export default function StateLeadDashboard() {
             ))}
           </select>
         </label>
-        <SignOutButton />
       </div>
 
       {dimension === 'district' && (
@@ -274,6 +279,7 @@ export default function StateLeadDashboard() {
           </tbody>
         </table>
       </div>
-    </main>
+      </main>
+    </>
   );
 }

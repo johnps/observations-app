@@ -1,5 +1,10 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { SignOutButton } from '@/components/SignOutButton';
+import { TopNav } from '@/components/TopNav';
+import { getSessionRole } from '@/lib/getSessionRole';
 
 const SECTIONS = [
   {
@@ -20,24 +25,40 @@ const SECTIONS = [
 ];
 
 export default function AdminHome() {
+  const router = useRouter();
+  const [authChecked, setAuthChecked] = useState(false);
+  const [navFullName, setNavFullName] = useState<string | null>(null);
+  const [navEmail, setNavEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    getSessionRole().then(({ role, fullName, email }) => {
+      if (role !== 'admin') { router.replace('/'); return; }
+      setAuthChecked(true);
+      setNavFullName(fullName);
+      setNavEmail(email);
+    });
+  }, [router]);
+
+  if (!authChecked) return null;
+
   return (
-    <main className="p-8 max-w-3xl">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-2xl font-semibold text-gray-800">Admin</h1>
-        <SignOutButton />
-      </div>
-      <div className="grid gap-4">
-        {SECTIONS.map(({ href, title, description }) => (
-          <Link
-            key={href}
-            href={href}
-            className="block p-5 border border-gray-200 rounded-lg bg-white hover:border-gray-400 transition-colors"
-          >
-            <p className="text-sm font-semibold text-gray-800 mb-1">{title}</p>
-            <p className="text-sm text-gray-500">{description}</p>
-          </Link>
-        ))}
-      </div>
-    </main>
+    <>
+      <TopNav role="admin" fullName={navFullName} email={navEmail} />
+      <main className="p-8 max-w-3xl">
+        <h1 className="text-2xl font-semibold text-gray-800 mb-8">Admin</h1>
+        <div className="grid gap-4">
+          {SECTIONS.map(({ href, title, description }) => (
+            <Link
+              key={href}
+              href={href}
+              className="block p-5 border border-gray-200 rounded-lg bg-white hover:border-gray-400 transition-colors"
+            >
+              <p className="text-sm font-semibold text-gray-800 mb-1">{title}</p>
+              <p className="text-sm text-gray-500">{description}</p>
+            </Link>
+          ))}
+        </div>
+      </main>
+    </>
   );
 }
