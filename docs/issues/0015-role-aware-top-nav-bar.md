@@ -33,3 +33,7 @@ Any web user can see their name, email, correct navigation links for their role,
 ## Blocked by
 
 None — can start immediately
+
+## Status
+
+Implemented

@@ -28,3 +28,7 @@ District lead expands an observation row that has photos and sees thumbnails; cl
 ## Blocked by
 
 None — can start immediately
+
+## Status
+
+Implemented

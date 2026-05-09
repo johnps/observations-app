@@ -40,3 +40,7 @@ District lead clicks "Map" in the nav bar and sees a full-screen OpenStreetMap c
 
 - Issue 0015 — TopNav must exist to mount on this page and for the "Map" nav link
 - Issue 0017 — react-leaflet must be installed and `useFilterState` must be extracted before building this page
+
+## Status
+
+Implemented
