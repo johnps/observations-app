@@ -1,23 +1,49 @@
-import { File } from 'expo-file-system';
 import { supabase } from './supabase';
 
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 const BUCKET = 'observation-photos';
+const UPLOAD_TIMEOUT_MS = 60_000;
+
+function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+  return fetch(url, { ...options, signal: controller.signal })
+    .finally(() => clearTimeout(timer));
+}
 
 export async function uploadPhoto(uri: string, obsId: string, index: number): Promise<string> {
   const path = `${obsId}/${index}.jpg`;
 
-  const fileBytes = await new File(uri).bytes();
-  const blob = new Blob([fileBytes], { type: 'image/jpeg' });
+  // fetch('file://...') produces a native React Native blob — the only body type
+  // React Native's networking stack can upload. ArrayBuffer/Uint8Array are not supported.
+  const fileRes = await fetchWithTimeout(uri, {});
+  const blob = await fileRes.blob();
 
-  const { error } = await supabase.storage
-    .from(BUCKET)
-    .upload(path, blob, { contentType: 'image/jpeg', upsert: true });
+  // Use the authenticated user's JWT so the storage RLS policy (authenticated role) passes.
+  const { data: { session } } = await supabase.auth.getSession();
+  const authToken = session?.access_token ?? SUPABASE_ANON_KEY;
 
-  if (error) {
-    console.log('[storage] upload error', error.message);
-    throw new Error(`Upload failed: ${error.message}`);
+  const uploadRes = await fetchWithTimeout(
+    `${SUPABASE_URL}/storage/v1/object/${BUCKET}/${path}`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+        apikey: SUPABASE_ANON_KEY,
+        'Content-Type': 'image/jpeg',
+        'x-upsert': 'true',
+      },
+      body: blob,
+    }
+  );
+
+  if (!uploadRes.ok) {
+    const body = await uploadRes.json().catch(() => ({}));
+    const msg = body.message ?? body.error ?? String(uploadRes.status);
+    console.log('[storage] upload error', msg);
+    throw new Error(`Upload failed: ${msg}`);
   }
 
-  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-  return data.publicUrl;
+  return `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${path}`;
 }
